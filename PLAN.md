@@ -86,16 +86,16 @@ MVP delivers:
 
 | ID | Description | Files/Modules | Acceptance Criteria | Status |
 |----|-------------|---------------|---------------------|--------|
-| P6-01 | Daily revision prompt | `src/revise/prompts/daily.py` | Prompt for gpt-5.2 with full day context | [ ] |
-| P6-02 | Entity normalization | `src/revise/normalize.py` | Deduplicates and normalizes entity names across notes | [ ] |
-| P6-03 | Hourly note revision | `src/revise/revise.py` | Updates hourly notes with day context, refreshes files | [ ] |
-| P6-04 | Daily summary note generation | `src/revise/daily_note.py` | Generates optional day-YYYYMMDD.md summary | [ ] |
-| P6-05 | Graph edge builder | `src/graph/edges.py` | Creates typed edges (ABOUT_TOPIC, WATCHED, etc.) with weights | [ ] |
-| P6-06 | Embedding refresh | `src/revise/embeddings.py` | Recomputes embeddings for revised notes | [ ] |
-| P6-07 | Aggregates computation | `src/revise/aggregates.py` | Computes daily rollups for "most" queries | [ ] |
-| P6-08 | Integrity checkpoint | `src/revise/integrity.py` | Validates all notes, embeddings, edges before deletion | [ ] |
-| P6-09 | Raw artifact deletion | `src/revise/cleanup.py` | Deletes screenshots, text buffers, OCR cache after checkpoint | [ ] |
-| P6-10 | Daily job scheduler | `src/jobs/daily.py` | APScheduler job runs once per day | [ ] |
+| P6-01 | Daily revision prompt | `src/revise/prompts/daily.py` | Prompt for gpt-5.2 with full day context | [x] |
+| P6-02 | Entity normalization | `src/revise/normalize.py` | Deduplicates and normalizes entity names across notes | [x] |
+| P6-03 | Hourly note revision | `src/revise/revise.py` | Updates hourly notes with day context, refreshes files | [x] |
+| P6-04 | Daily summary note generation | `src/revise/daily_note.py` | Generates optional day-YYYYMMDD.md summary | [x] |
+| P6-05 | Graph edge builder | `src/graph/edges.py` | Creates typed edges (ABOUT_TOPIC, WATCHED, etc.) with weights | [x] |
+| P6-06 | Embedding refresh | `src/revise/embeddings.py` | Recomputes embeddings for revised notes | [x] |
+| P6-07 | Aggregates computation | `src/revise/aggregates.py` | Computes daily rollups for "most" queries | [x] |
+| P6-08 | Integrity checkpoint | `src/revise/integrity.py` | Validates all notes, embeddings, edges before deletion | [x] |
+| P6-09 | Raw artifact deletion | `src/revise/cleanup.py` | Deletes screenshots, text buffers, OCR cache after checkpoint | [x] |
+| P6-10 | Daily job scheduler | `src/jobs/daily.py` | APScheduler job runs once per day | [x] |
 
 ### Phase 7: Retrieval & Chat
 
