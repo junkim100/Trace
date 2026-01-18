@@ -31,7 +31,7 @@ MVP delivers:
 | P1-02 | Initialize Electron app scaffold | `electron/`, `package.json` | `npm start` launches empty Electron window | [x] |
 | P1-03 | Set up Python-Electron IPC bridge | `src/trace_app/ipc/`, `electron/preload.js` | Electron can call Python functions and receive responses | [x] |
 | P1-04 | Create SQLite schema and migrations | `src/db/schema.sql`, `src/db/migrations/` | All tables from PRD created, migrations versioned | [x] |
-| P1-05 | Implement sqlite-vec integration | `src/db/vectors.py` | Can store and query 1536-dim embeddings | [ ] |
+| P1-05 | Implement sqlite-vec integration | `src/db/vectors.py` | Can store and query 1536-dim embeddings | [x] |
 | P1-06 | Set up data directories structure | `src/core/paths.py` | Creates `notes/`, `db/`, `cache/` directories on first run | [ ] |
 
 ### Phase 2: Permissions & System Integration
