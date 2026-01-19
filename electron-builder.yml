@@ -1,0 +1,94 @@
+# Electron Builder Configuration
+# P9-06: App packaging - Builds .dmg for macOS distribution
+
+appId: com.trace.app
+productName: Trace
+copyright: Copyright 2025 Jun Kim
+
+# Build configuration
+directories:
+  output: release
+  buildResources: electron/build
+
+# Files to include in the app
+files:
+  - electron/main.js
+  - electron/preload.js
+  - electron/dist/**/*
+
+# macOS specific configuration
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: electron/build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: electron/entitlements.mac.plist
+  entitlementsInherit: electron/entitlements.mac.plist
+  # Privacy permission descriptions
+  extendInfo:
+    NSScreenCaptureUsageDescription: "Trace needs screen recording permission to capture screenshots of your activity."
+    NSAccessibilityUsageDescription: "Trace needs accessibility permission to detect which app and window you are using."
+    NSLocationWhenInUseUsageDescription: "Trace uses your location to add context to your activity notes."
+    NSLocationUsageDescription: "Trace uses your location to add context to your activity notes."
+    NSAppleEventsUsageDescription: "Trace needs automation permission to get information about running applications."
+    LSUIElement: false  # Show in Dock (can be toggled in app settings)
+  # Code signing configuration (update for actual signing)
+  identity: null  # Set to your Developer ID for notarized builds
+
+# DMG configuration
+dmg:
+  title: Trace
+  icon: electron/build/icon.icns
+  background: electron/build/dmg-background.png
+  iconSize: 80
+  contents:
+    - x: 130
+      y: 220
+      type: file
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+  window:
+    width: 540
+    height: 380
+
+# Additional file associations (optional)
+fileAssociations:
+  - ext: trace
+    name: Trace Document
+    role: Editor
+
+# Auto update configuration (disabled for MVP)
+publish: null
+
+# Archive configuration
+asar: true
+asarUnpack:
+  - "**/*.node"
+
+# Compression
+compression: normal
+
+# Extra resources to include
+extraResources:
+  - from: LICENSE
+    to: LICENSE
+
+# Build hooks
+afterSign: null  # Can be used for notarization
+
+# NPM configuration
+npmRebuild: true
+
+# File permissions
+removePackageScripts: true

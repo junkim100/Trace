@@ -126,13 +126,13 @@ MVP delivers:
 
 | ID | Description | Files/Modules | Acceptance Criteria | Status |
 |----|-------------|---------------|---------------------|--------|
-| P9-01 | End-to-end capture test | `tests/e2e/test_capture.py` | Capture daemon runs for 5 minutes, data persisted | [ ] |
-| P9-02 | End-to-end summarization test | `tests/e2e/test_summarize.py` | Hourly note generated from test data | [ ] |
-| P9-03 | End-to-end chat test | `tests/e2e/test_chat.py` | Query returns relevant notes with citations | [ ] |
-| P9-04 | Error handling & retry logic | `src/core/retry.py` | LLM failures retry with exponential backoff | [ ] |
-| P9-05 | Logging infrastructure | `src/core/logging.py` | Structured logging to file and console | [ ] |
-| P9-06 | App packaging | `electron-builder.yml` | Builds .dmg for macOS distribution | [ ] |
-| P9-07 | GitHub release workflow | `.github/workflows/release.yml` | CI builds and publishes releases | [ ] |
+| P9-01 | End-to-end capture test | `tests/e2e/test_capture.py` | Capture daemon runs for 5 minutes, data persisted | [x] |
+| P9-02 | End-to-end summarization test | `tests/e2e/test_summarize.py` | Hourly note generated from test data | [x] |
+| P9-03 | End-to-end chat test | `tests/e2e/test_chat.py` | Query returns relevant notes with citations | [x] |
+| P9-04 | Error handling & retry logic | `src/core/retry.py` | LLM failures retry with exponential backoff | [x] |
+| P9-05 | Logging infrastructure | `src/core/logging.py` | Structured logging to file and console | [x] |
+| P9-06 | App packaging | `electron-builder.yml` | Builds .dmg for macOS distribution | [x] |
+| P9-07 | GitHub release workflow | `.github/workflows/release.yml` | CI builds and publishes releases | [x] |
 
 ## Risks and Open Questions
 
