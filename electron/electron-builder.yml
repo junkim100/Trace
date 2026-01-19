@@ -1,0 +1,84 @@
+# Electron Builder Configuration
+# Builds .dmg for macOS distribution
+
+appId: com.trace.app
+productName: Trace
+copyright: Copyright 2025 Jun Kim
+
+# Build configuration
+directories:
+  output: release
+  buildResources: build
+
+# Files to include in the app
+files:
+  - main.js
+  - preload.js
+  - dist/**/*
+
+# macOS specific configuration
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: entitlements.mac.plist
+  entitlementsInherit: entitlements.mac.plist
+  extendInfo:
+    NSScreenCaptureUsageDescription: "Trace needs screen recording permission to capture screenshots of your activity."
+    NSAccessibilityUsageDescription: "Trace needs accessibility permission to detect which app and window you are using."
+    NSLocationWhenInUseUsageDescription: "Trace uses your location to add context to your activity notes."
+    NSLocationUsageDescription: "Trace uses your location to add context to your activity notes."
+    NSAppleEventsUsageDescription: "Trace needs automation permission to get information about running applications."
+    LSUIElement: false
+  identity: null
+
+# DMG configuration
+dmg:
+  title: Trace
+  icon: build/icon.icns
+  iconSize: 80
+  contents:
+    - x: 130
+      y: 220
+      type: file
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+  window:
+    width: 540
+    height: 380
+
+# Auto update configuration (disabled for MVP)
+publish: null
+
+# Archive configuration
+asar: true
+asarUnpack:
+  - "**/*.node"
+
+# Compression
+compression: normal
+
+# Extra resources to include
+extraResources:
+  - from: ../LICENSE
+    to: LICENSE
+  - from: python-dist
+    to: python-dist
+    filter:
+      - "**/*"
+
+# NPM configuration
+npmRebuild: true
+removePackageScripts: true
