@@ -83,6 +83,11 @@ compression: normal
 extraResources:
   - from: LICENSE
     to: LICENSE
+  # Python backend (bundled with PyInstaller)
+  - from: electron/python-dist
+    to: python-dist
+    filter:
+      - "**/*"
 
 # Build hooks
 afterSign: null  # Can be used for notarization
