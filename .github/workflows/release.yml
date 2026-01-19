@@ -188,23 +188,31 @@ jobs:
 
           ### macOS
           1. Download the appropriate .dmg file for your Mac:
-             - Apple Silicon (M1/M2/M3): \`Trace-${VERSION}-arm64.dmg\`
+             - Apple Silicon (M1/M2/M3/M4): \`Trace-${VERSION}-arm64.dmg\`
              - Intel: \`Trace-${VERSION}-x64.dmg\`
-          2. Open the .dmg file
-          3. Drag Trace to your Applications folder
-          4. Open Trace from Applications
-          5. Grant the requested permissions (Screen Recording, Accessibility)
+          2. Open the .dmg file and drag Trace to your Applications folder
+          3. **First launch** (important!):
+             - Right-click (or Control-click) on Trace in Applications
+             - Click "Open", then click "Open" again in the dialog
+             - This is only needed once
+          4. Grant permissions when prompted:
+             - Screen Recording (required)
+             - Accessibility (required)
+             - Location Services (optional)
+          5. Set your OpenAI API key in Settings
+
+          ### Troubleshooting
+          If you see "Trace is damaged and can't be opened", run:
+          \`\`\`
+          xattr -cr /Applications/Trace.app
+          \`\`\`
 
           ## Requirements
           - macOS 12.0 (Monterey) or later
-
-          ## First Run
-          1. Launch Trace.app from Applications
-          2. Grant permissions when prompted (Screen Recording, Accessibility)
-          3. Set your OpenAI API key in Settings
+          - OpenAI API key
 
           ## Data Storage
-          - Your data is stored in: \`~/Library/Application Support/Trace/\`
+          Your data is stored locally in \`~/Library/Application Support/Trace/\`
 
           ---
 

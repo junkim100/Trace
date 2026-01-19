@@ -86,7 +86,40 @@ Location             ─┘
 
 ---
 
-## Installation
+## Download
+
+### macOS
+
+1. Download the latest `.dmg` from [Releases](https://github.com/junkim100/Trace/releases):
+   - **Apple Silicon** (M1/M2/M3/M4): `Trace-x.x.x-arm64.dmg`
+   - **Intel**: `Trace-x.x.x-x64.dmg`
+
+2. Open the DMG and drag Trace to your Applications folder
+
+3. **First launch** (required for unsigned apps):
+   - Right-click (or Control-click) on Trace in Applications
+   - Click **"Open"**
+   - Click **"Open"** again in the security dialog
+   - This is only needed once
+
+4. Grant permissions when prompted:
+   - **Screen Recording** - required for capturing screenshots
+   - **Accessibility** - required for detecting active windows
+   - **Location Services** - optional, adds location context to notes
+
+5. Set your OpenAI API key in Settings
+
+### Troubleshooting
+
+If you see **"Trace is damaged and can't be opened"**:
+```bash
+xattr -cr /Applications/Trace.app
+```
+Then try opening again.
+
+---
+
+## Development Setup
 
 ### Prerequisites
 
