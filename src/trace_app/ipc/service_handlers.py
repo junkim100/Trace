@@ -97,18 +97,15 @@ def handle_trigger_backfill(params: dict[str, Any]) -> dict[str, Any]:
 
 @handler("services.check_missing")
 def handle_check_missing(params: dict[str, Any]) -> dict[str, Any]:
-    """Check for missing hourly notes without triggering backfill.
+    """Check for ALL missing hourly notes without triggering backfill.
 
-    Params:
-        lookback_hours: How many hours to check back (default: 4)
+    Scans entire database for hours with activity but no notes.
     """
     if _service_manager is None:
         return {
             "success": False,
             "error": "Service manager not initialized",
         }
-
-    lookback = params.get("lookback_hours", 4)
 
     try:
         if _service_manager._backfill_detector is None:
@@ -119,11 +116,10 @@ def handle_check_missing(params: dict[str, Any]) -> dict[str, Any]:
                 api_key=_service_manager.api_key,
             )
 
-        missing = _service_manager._backfill_detector.find_missing_hours(lookback)
+        missing = _service_manager._backfill_detector.find_missing_hours()
 
         return {
             "success": True,
-            "lookback_hours": lookback,
             "missing_count": len(missing),
             "missing_hours": [h.isoformat() for h in missing],
         }
