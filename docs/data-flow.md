@@ -2,6 +2,8 @@
 
 This document describes how data moves through the Trace system from capture to query.
 
+> **Data Location**: All data is stored in `~/Library/Application Support/Trace/` on macOS.
+
 ## Overview
 
 ```

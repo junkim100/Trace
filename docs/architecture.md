@@ -2,6 +2,8 @@
 
 This document describes the high-level architecture of Trace, a macOS application that continuously observes digital activity and converts it into searchable knowledge.
 
+> **Data Location**: All user data is stored in `~/Library/Application Support/Trace/` on macOS.
+
 ## System Overview
 
 ```
