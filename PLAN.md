@@ -101,38 +101,38 @@ MVP delivers:
 
 | ID | Description | Files/Modules | Acceptance Criteria | Status |
 |----|-------------|---------------|---------------------|--------|
-| P7-01 | Time filter parser | `src/retrieval/time.py` | Parses natural language time references to date ranges | [ ] |
-| P7-02 | Vector search | `src/retrieval/search.py` | Searches notes by embedding similarity within time range | [ ] |
-| P7-03 | Graph expansion | `src/retrieval/graph.py` | Expands results using typed edges and weights | [ ] |
-| P7-04 | Aggregates lookup | `src/retrieval/aggregates.py` | Handles "most watched/listened" queries via aggregates table | [ ] |
-| P7-05 | Answer synthesis prompt | `src/chat/prompts/answer.py` | Generates grounded answer with citations | [ ] |
-| P7-06 | Chat API endpoint | `src/chat/api.py` | Python endpoint for chat queries | [ ] |
+| P7-01 | Time filter parser | `src/retrieval/time.py` | Parses natural language time references to date ranges | [x] |
+| P7-02 | Vector search | `src/retrieval/search.py` | Searches notes by embedding similarity within time range | [x] |
+| P7-03 | Graph expansion | `src/retrieval/graph.py` | Expands results using typed edges and weights | [x] |
+| P7-04 | Aggregates lookup | `src/retrieval/aggregates.py` | Handles "most watched/listened" queries via aggregates table | [x] |
+| P7-05 | Answer synthesis prompt | `src/chat/prompts/answer.py` | Generates grounded answer with citations | [x] |
+| P7-06 | Chat API endpoint | `src/chat/api.py` | Python endpoint for chat queries | [x] |
 
 ### Phase 8: Desktop UI
 
 | ID | Description | Files/Modules | Acceptance Criteria | Status |
 |----|-------------|---------------|---------------------|--------|
-| P8-01 | Electron main process setup | `electron/main.js` | Launches Python backend, manages lifecycle | [ ] |
-| P8-02 | React app scaffold | `electron/src/` | Basic React app with routing | [ ] |
-| P8-03 | Chat input component | `electron/src/components/ChatInput.tsx` | Text input with submit | [ ] |
-| P8-04 | Time filter component | `electron/src/components/TimeFilter.tsx` | Date picker, quick presets (today, this week, etc.) | [ ] |
-| P8-05 | Results list component | `electron/src/components/Results.tsx` | Shows relevant notes with timestamps | [ ] |
-| P8-06 | Note viewer component | `electron/src/components/NoteViewer.tsx` | Opens and displays Markdown note files | [ ] |
-| P8-07 | Answer display component | `electron/src/components/Answer.tsx` | Shows synthesized answer with citations | [ ] |
-| P8-08 | System tray integration | `electron/main.js` | Menu bar icon, quick access, status indicator | [ ] |
-| P8-09 | Settings UI | `electron/src/pages/Settings.tsx` | LLM API key config, data directory path | [ ] |
+| P8-01 | Electron main process setup | `electron/main.js` | Launches Python backend, manages lifecycle | [x] |
+| P8-02 | React app scaffold | `electron/src/` | Basic React app with routing | [x] |
+| P8-03 | Chat input component | `electron/src/components/ChatInput.tsx` | Text input with submit | [x] |
+| P8-04 | Time filter component | `electron/src/components/TimeFilter.tsx` | Date picker, quick presets (today, this week, etc.) | [x] |
+| P8-05 | Results list component | `electron/src/components/Results.tsx` | Shows relevant notes with timestamps | [x] |
+| P8-06 | Note viewer component | `electron/src/components/NoteViewer.tsx` | Opens and displays Markdown note files | [x] |
+| P8-07 | Answer display component | `electron/src/components/Answer.tsx` | Shows synthesized answer with citations | [x] |
+| P8-08 | System tray integration | `electron/main.js` | Menu bar icon, quick access, status indicator | [x] |
+| P8-09 | Settings UI | `electron/src/pages/Settings.tsx` | LLM API key config, data directory path | [x] |
 
 ### Phase 9: Integration & Polish
 
 | ID | Description | Files/Modules | Acceptance Criteria | Status |
 |----|-------------|---------------|---------------------|--------|
-| P9-01 | End-to-end capture test | `tests/e2e/test_capture.py` | Capture daemon runs for 5 minutes, data persisted | [ ] |
-| P9-02 | End-to-end summarization test | `tests/e2e/test_summarize.py` | Hourly note generated from test data | [ ] |
-| P9-03 | End-to-end chat test | `tests/e2e/test_chat.py` | Query returns relevant notes with citations | [ ] |
-| P9-04 | Error handling & retry logic | `src/core/retry.py` | LLM failures retry with exponential backoff | [ ] |
-| P9-05 | Logging infrastructure | `src/core/logging.py` | Structured logging to file and console | [ ] |
-| P9-06 | App packaging | `electron-builder.yml` | Builds .dmg for macOS distribution | [ ] |
-| P9-07 | GitHub release workflow | `.github/workflows/release.yml` | CI builds and publishes releases | [ ] |
+| P9-01 | End-to-end capture test | `tests/e2e/test_capture.py` | Capture daemon runs for 5 minutes, data persisted | [x] |
+| P9-02 | End-to-end summarization test | `tests/e2e/test_summarize.py` | Hourly note generated from test data | [x] |
+| P9-03 | End-to-end chat test | `tests/e2e/test_chat.py` | Query returns relevant notes with citations | [x] |
+| P9-04 | Error handling & retry logic | `src/core/retry.py` | LLM failures retry with exponential backoff | [x] |
+| P9-05 | Logging infrastructure | `src/core/logging.py` | Structured logging to file and console | [x] |
+| P9-06 | App packaging | `electron-builder.yml` | Builds .dmg for macOS distribution | [x] |
+| P9-07 | GitHub release workflow | `.github/workflows/release.yml` | CI builds and publishes releases | [x] |
 
 ## Risks and Open Questions
 

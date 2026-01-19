@@ -1,0 +1,221 @@
+# GitHub Release Workflow
+# P9-07: CI builds and publishes releases
+#
+# Triggers on:
+# - Push to main with version tags (v*)
+# - Manual dispatch for testing
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
+        type: string
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Validate version and prepare release
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "Release version: ${VERSION}"
+
+      - name: Validate Version Format
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            echo "Expected format: X.Y.Z or X.Y.Z-suffix"
+            exit 1
+          fi
+
+  # Run tests before building
+  test:
+    name: Run Tests
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --ignore=tests/e2e
+
+  # Build macOS app
+  build-macos:
+    name: Build macOS (${{ matrix.arch }})
+    needs: [prepare, test]
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install Node dependencies
+        working-directory: electron
+        run: npm ci
+
+      - name: Build Electron app
+        working-directory: electron
+        run: npm run build
+
+      - name: Package for macOS
+        working-directory: electron
+        run: |
+          npx electron-builder --mac --${{ matrix.arch }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Disable code signing for now
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trace-macos-${{ matrix.arch }}
+          path: |
+            electron/release/*.dmg
+            electron/release/*.zip
+          if-no-files-found: warn
+
+  # Create GitHub release
+  release:
+    name: Create Release
+    needs: [prepare, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f -name "*.dmg" -o -name "*.zip" | head -20
+
+      - name: Generate Release Notes
+        id: notes
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          # Generate changelog from git log
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGES=$(git log --pretty=format:"- %s (%h)" ${PREVIOUS_TAG}..HEAD | head -50)
+          else
+            CHANGES=$(git log --pretty=format:"- %s (%h)" | head -20)
+          fi
+
+          cat << EOF > release_notes.md
+          ## What's Changed
+
+          ${CHANGES}
+
+          ## Installation
+
+          ### macOS
+          1. Download the appropriate .dmg file for your Mac:
+             - Apple Silicon (M1/M2/M3): \`Trace-${VERSION}-arm64.dmg\`
+             - Intel: \`Trace-${VERSION}-x64.dmg\`
+          2. Open the .dmg file
+          3. Drag Trace to your Applications folder
+          4. Open Trace from Applications
+          5. Grant the requested permissions (Screen Recording, Accessibility)
+
+          ## Requirements
+          - macOS 12.0 (Monterey) or later
+          - Python 3.11+ with uv package manager
+          - Trace project cloned to ~/Trace
+
+          ## First Run
+          1. Ensure the Trace Python project is at ~/Trace
+          2. Install dependencies: \`cd ~/Trace && uv sync\`
+          3. Launch Trace.app
+          4. Grant permissions when prompted
+
+          ---
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...v${VERSION}
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Trace ${{ needs.prepare.outputs.version }}
+          body_path: release_notes.md
+          draft: true
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Notify on failure
+  notify-failure:
+    name: Notify on Failure
+    needs: [prepare, test, build-macos, release]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report failure
+        run: |
+          echo "Release workflow failed for version ${{ needs.prepare.outputs.version }}"
+          echo "Check the workflow logs for details"

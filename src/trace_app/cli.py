@@ -10,7 +10,7 @@ from pathlib import Path
 import fire
 from dotenv import load_dotenv
 
-from trace_app.ipc.server import run_server
+from src.trace_app.ipc.server import run_server
 
 # Load .env file from project root
 _project_root = Path(__file__).parent.parent.parent
