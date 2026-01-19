@@ -119,7 +119,7 @@ class SemanticSearch(Action):
                 min_score=min_score,
             )
 
-            notes = [n.to_dict() for n in result.notes]
+            notes = [n.to_dict() for n in result.matches]
 
             return StepResult(
                 step_id=step_id,
@@ -127,7 +127,7 @@ class SemanticSearch(Action):
                 success=True,
                 result={
                     "notes": notes,
-                    "total_searched": result.total_searched,
+                    "total_searched": result.total_notes_searched,
                     "query": query,
                 },
                 execution_time_ms=(time.time() - start_time) * 1000,
