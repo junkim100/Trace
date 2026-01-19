@@ -70,3 +70,7 @@ index/
 *.dmg
 *.app
 *.zip
+
+# PyInstaller / Electron builder
+electron/python-dist/
+electron/release/

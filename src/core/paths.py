@@ -2,10 +2,10 @@
 Data Directory Structure Management for Trace
 
 This module defines and manages the data directory structure for Trace.
-All paths are relative to the DATA_ROOT (~/Trace by default).
+All paths are relative to the DATA_ROOT (~/Library/Application Support/Trace by default).
 
 Directory structure:
-    Trace/
+    ~/Library/Application Support/Trace/
     ├── notes/YYYY/MM/DD/          # Durable Markdown notes
     │   ├── hour-YYYYMMDD-HH.md
     │   └── day-YYYYMMDD.md
@@ -19,14 +19,33 @@ Directory structure:
 
 import logging
 import os
+import shutil
 from datetime import date, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Allow override via environment variable for testing
+
+def _get_default_data_root() -> Path:
+    """Get the default data root path based on platform."""
+    import sys
+
+    if sys.platform == "darwin":
+        # macOS: Use Application Support (Apple recommended)
+        return Path.home() / "Library" / "Application Support" / "Trace"
+    elif sys.platform == "win32":
+        # Windows: Use AppData/Local
+        appdata = os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")
+        return Path(appdata) / "Trace"
+    else:
+        # Linux/other: Use XDG data home or ~/.local/share
+        xdg_data = os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
+        return Path(xdg_data) / "Trace"
+
+
+# Allow override via environment variable for testing/development
 _data_root_override = os.environ.get("TRACE_DATA_ROOT")
-DATA_ROOT: Path = Path(_data_root_override) if _data_root_override else Path.home() / "Trace"
+DATA_ROOT: Path = Path(_data_root_override) if _data_root_override else _get_default_data_root()
 
 # Primary directories
 NOTES_DIR: Path = DATA_ROOT / "notes"
@@ -184,6 +203,90 @@ def ensure_note_directory(dt: datetime | date) -> Path:
     return note_dir
 
 
+# Legacy data location (for migration)
+_LEGACY_DATA_ROOT = Path.home() / "Trace"
+
+
+def check_legacy_data() -> dict[str, bool]:
+    """
+    Check if there is data in the legacy location (~/Trace).
+
+    Returns:
+        Dictionary with 'has_legacy_data', 'has_new_data', 'needs_migration'
+    """
+    legacy_db = _LEGACY_DATA_ROOT / "db" / "trace.sqlite"
+    legacy_notes = _LEGACY_DATA_ROOT / "notes"
+
+    has_legacy = legacy_db.exists() or legacy_notes.exists()
+    has_new = DB_PATH.exists() or NOTES_DIR.exists()
+
+    return {
+        "has_legacy_data": has_legacy,
+        "has_new_data": has_new,
+        "needs_migration": has_legacy and not has_new,
+        "legacy_path": str(_LEGACY_DATA_ROOT),
+        "new_path": str(DATA_ROOT),
+    }
+
+
+def migrate_legacy_data(dry_run: bool = True) -> dict[str, list[str]]:
+    """
+    Migrate data from legacy location (~/Trace) to new location.
+
+    Args:
+        dry_run: If True, only report what would be migrated without moving files
+
+    Returns:
+        Dictionary with lists of 'migrated' and 'errors' paths
+    """
+    status = check_legacy_data()
+
+    if not status["needs_migration"]:
+        return {
+            "migrated": [],
+            "errors": [],
+            "message": "No migration needed",
+        }
+
+    migrated = []
+    errors = []
+
+    # Directories to migrate
+    dirs_to_migrate = [
+        ("db", _LEGACY_DATA_ROOT / "db", DB_DIR),
+        ("notes", _LEGACY_DATA_ROOT / "notes", NOTES_DIR),
+        ("index", _LEGACY_DATA_ROOT / "index", INDEX_DIR),
+    ]
+
+    for name, src, dst in dirs_to_migrate:
+        if src.exists():
+            if dry_run:
+                migrated.append(f"[DRY RUN] Would migrate {name}: {src} -> {dst}")
+            else:
+                try:
+                    # Ensure parent directory exists
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Check if destination already exists
+                    if dst.exists():
+                        errors.append(f"Cannot migrate {name}: destination {dst} already exists")
+                        logger.error(f"Cannot migrate {name}: destination {dst} already exists")
+                    else:
+                        # Move the directory
+                        shutil.move(str(src), str(dst))
+                        migrated.append(f"Migrated {name}: {src} -> {dst}")
+                        logger.info(f"Migrated {name} from {src} to {dst}")
+                except Exception as e:
+                    errors.append(f"Failed to migrate {name}: {e}")
+                    logger.error(f"Failed to migrate {name}: {e}")
+
+    return {
+        "migrated": migrated,
+        "errors": errors,
+        "dry_run": dry_run,
+    }
+
+
 if __name__ == "__main__":
     import fire
 
@@ -220,10 +323,20 @@ if __name__ == "__main__":
             "missing": missing,
         }
 
+    def check_migration():
+        """Check if migration from legacy location is needed."""
+        return check_legacy_data()
+
+    def migrate(dry_run: bool = True):
+        """Migrate data from legacy ~/Trace to new location."""
+        return migrate_legacy_data(dry_run=dry_run)
+
     fire.Fire(
         {
             "init": init,
             "show": show,
             "verify": verify,
+            "check_migration": check_migration,
+            "migrate": migrate,
         }
     )

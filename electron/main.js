@@ -11,20 +11,52 @@ let pendingRequests = new Map(); // id -> { resolve, reject, timeout }
 let requestId = 0;
 let tray = null;
 
-// Get the path to the Python executable
-function getPythonPath() {
-  let projectRoot;
+// Get the data directory path (where notes, db, cache are stored)
+function getDataPath() {
   const homeDir = app.getPath('home');
 
-  if (app.isPackaged) {
-    // When packaged, the project root is determined by:
-    // 1. TRACE_PROJECT_ROOT environment variable (if set)
-    // 2. Default to the user's home directory + /Trace
-    projectRoot = process.env.TRACE_PROJECT_ROOT || path.join(homeDir, 'Trace');
-  } else {
-    // In development, project root is one level up from the electron directory
-    projectRoot = path.join(__dirname, '..');
+  // Check for override via environment variable
+  if (process.env.TRACE_DATA_ROOT) {
+    return process.env.TRACE_DATA_ROOT;
   }
+
+  // Default: ~/Library/Application Support/Trace (Apple recommended)
+  return path.join(homeDir, 'Library', 'Application Support', 'Trace');
+}
+
+// Get the path to the Python executable
+function getPythonPath() {
+  const homeDir = app.getPath('home');
+  const dataPath = getDataPath();
+
+  if (app.isPackaged) {
+    // When packaged, use the bundled Python executable
+    const bundledPython = path.join(
+      process.resourcesPath,
+      'python-dist',
+      'trace',
+      'trace'  // The PyInstaller executable name
+    );
+
+    // Check if bundled Python exists
+    if (fs.existsSync(bundledPython)) {
+      console.log(`Using bundled Python: ${bundledPython}`);
+      return {
+        command: bundledPython,
+        args: ['serve'],
+        cwd: dataPath,
+        env: { TRACE_DATA_ROOT: dataPath },
+      };
+    }
+
+    // Fallback to uv if bundled Python not found (development builds)
+    console.log('Bundled Python not found, falling back to uv');
+  }
+
+  // Development mode or fallback: use uv
+  const projectRoot = app.isPackaged
+    ? (process.env.TRACE_PROJECT_ROOT || path.join(homeDir, 'Trace'))
+    : path.join(__dirname, '..');
 
   // When launched from app icon, PATH may not include ~/.local/bin
   // Try to find uv in common locations
@@ -48,45 +80,81 @@ function getPythonPath() {
     command: uvCommand,
     args: ['run', 'python', '-m', 'src.trace_app.cli', 'serve'],
     cwd: projectRoot,
+    env: { TRACE_DATA_ROOT: dataPath },
   };
 }
 
 function startPythonBackend() {
-  const { command, args, cwd } = getPythonPath();
+  const { command, args, cwd, env: customEnv } = getPythonPath();
+  const isBundled = command.includes('python-dist');
 
   console.log(`Starting Python backend: ${command} ${args.join(' ')} in ${cwd}`);
+  console.log(`Using bundled Python: ${isBundled}`);
 
-  // Check if project directory exists
-  if (!fs.existsSync(cwd)) {
-    console.error(`Project directory not found: ${cwd}`);
-    dialog.showMessageBox({
-      type: 'error',
-      title: 'Project Not Found',
-      message: 'Could not find the Trace project directory.',
-      detail: `Expected location: ${cwd}\n\nMake sure the Trace project is installed at this location.`,
-      buttons: ['OK'],
-    });
-    return;
+  // For bundled Python, ensure data directory exists
+  // For development mode, check for project directory
+  if (isBundled) {
+    // Ensure data directory exists
+    if (!fs.existsSync(cwd)) {
+      try {
+        fs.mkdirSync(cwd, { recursive: true });
+        console.log(`Created data directory: ${cwd}`);
+      } catch (err) {
+        console.error(`Failed to create data directory: ${cwd}`, err);
+        dialog.showMessageBox({
+          type: 'error',
+          title: 'Data Directory Error',
+          message: 'Could not create the data directory.',
+          detail: `Location: ${cwd}\n\nError: ${err.message}`,
+          buttons: ['OK'],
+        });
+        return;
+      }
+    }
+  } else {
+    // Development mode: check for project directory and pyproject.toml
+    if (!fs.existsSync(cwd)) {
+      console.error(`Project directory not found: ${cwd}`);
+      dialog.showMessageBox({
+        type: 'error',
+        title: 'Project Not Found',
+        message: 'Could not find the Trace project directory.',
+        detail: `Expected location: ${cwd}\n\nMake sure the Trace project is installed at this location.`,
+        buttons: ['OK'],
+      });
+      return;
+    }
+
+    const pyprojectPath = path.join(cwd, 'pyproject.toml');
+    if (!fs.existsSync(pyprojectPath)) {
+      console.error(`pyproject.toml not found in: ${cwd}`);
+      dialog.showMessageBox({
+        type: 'error',
+        title: 'Invalid Project',
+        message: 'The Trace project directory is missing pyproject.toml.',
+        detail: `Location: ${cwd}\n\nThis doesn't appear to be a valid Trace project.`,
+        buttons: ['OK'],
+      });
+      return;
+    }
   }
 
-  // Check if pyproject.toml exists (indicates a valid project)
-  const pyprojectPath = path.join(cwd, 'pyproject.toml');
-  if (!fs.existsSync(pyprojectPath)) {
-    console.error(`pyproject.toml not found in: ${cwd}`);
-    dialog.showMessageBox({
-      type: 'error',
-      title: 'Invalid Project',
-      message: 'The Trace project directory is missing pyproject.toml.',
-      detail: `Location: ${cwd}\n\nThis doesn't appear to be a valid Trace project.`,
-      buttons: ['OK'],
-    });
-    return;
+  // Merge environment variables
+  const spawnEnv = {
+    ...process.env,
+    PYTHONUNBUFFERED: '1',
+    ...customEnv,
+  };
+
+  // Only set PYTHONPATH for development mode (not needed for bundled)
+  if (!isBundled) {
+    spawnEnv.PYTHONPATH = cwd;
   }
 
   pythonProcess = spawn(command, args, {
     cwd,
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: cwd },
+    env: spawnEnv,
   });
 
   // Create readline interface for reading JSON lines from stdout

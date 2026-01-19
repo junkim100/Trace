@@ -93,6 +93,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install Python dependencies
+        run: |
+          source $HOME/.cargo/env
+          uv sync
+
+      - name: Build Python backend with PyInstaller
+        run: |
+          source $HOME/.cargo/env
+          ./build-python.sh build
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -179,14 +197,14 @@ jobs:
 
           ## Requirements
           - macOS 12.0 (Monterey) or later
-          - Python 3.11+ with uv package manager
-          - Trace project cloned to ~/Trace
 
           ## First Run
-          1. Ensure the Trace Python project is at ~/Trace
-          2. Install dependencies: \`cd ~/Trace && uv sync\`
-          3. Launch Trace.app
-          4. Grant permissions when prompted
+          1. Launch Trace.app from Applications
+          2. Grant permissions when prompted (Screen Recording, Accessibility)
+          3. Set your OpenAI API key in Settings
+
+          ## Data Storage
+          - Your data is stored in: \`~/Library/Application Support/Trace/\`
 
           ---
 
