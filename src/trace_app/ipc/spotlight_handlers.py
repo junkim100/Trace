@@ -11,7 +11,7 @@ P11-01: Spotlight integration
 import logging
 from typing import Any
 
-from src.core.paths import get_notes_path
+from src.core.paths import NOTES_DIR
 from src.platform.spotlight import (
     get_spotlight_status,
     index_note_for_spotlight,
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 def handle_spotlight_status(params: dict[str, Any]) -> dict[str, Any]:
     """Get Spotlight indexing status."""
     try:
-        notes_dir = get_notes_path()
+        notes_dir = NOTES_DIR
         status = get_spotlight_status(notes_dir)
         return {
             "success": True,
@@ -45,7 +45,7 @@ def handle_spotlight_status(params: dict[str, Any]) -> dict[str, Any]:
 def handle_spotlight_reindex(params: dict[str, Any]) -> dict[str, Any]:
     """Reindex all notes for Spotlight."""
     try:
-        notes_dir = get_notes_path()
+        notes_dir = NOTES_DIR
         result = reindex_all_notes(notes_dir)
 
         # Also trigger mdimport
@@ -105,7 +105,7 @@ def handle_index_note(params: dict[str, Any]) -> dict[str, Any]:
 def handle_trigger_reindex(params: dict[str, Any]) -> dict[str, Any]:
     """Trigger Spotlight to reindex the notes directory using mdimport."""
     try:
-        notes_dir = get_notes_path()
+        notes_dir = NOTES_DIR
         success = trigger_spotlight_reindex(notes_dir)
         return {"success": success}
     except Exception as e:

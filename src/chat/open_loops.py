@@ -12,8 +12,8 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from src.core.paths import get_db_path
-from src.db.connection import get_connection
+from src.core.paths import DB_PATH
+from src.db import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def get_open_loops(
     Returns:
         List of OpenLoop objects sorted by recency
     """
-    db_path = get_db_path()
+    db_path = DB_PATH
     conn = get_connection(db_path)
 
     try:

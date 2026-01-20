@@ -12,8 +12,8 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from src.core.paths import get_db_path
-from src.db.connection import get_connection
+from src.core.paths import DB_PATH
+from src.db import get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ def get_graph_data(
     Returns:
         Dict with nodes and edges arrays
     """
-    db_path = get_db_path()
+    db_path = DB_PATH
     conn = get_connection(db_path)
 
     try:
@@ -181,7 +181,7 @@ def get_entity_types() -> list[dict]:
     Returns:
         List of {type, count} dicts
     """
-    db_path = get_db_path()
+    db_path = DB_PATH
     conn = get_connection(db_path)
 
     try:
@@ -210,7 +210,7 @@ def get_entity_details(entity_id: str) -> dict:
     Returns:
         Dict with entity details, related entities, and notes
     """
-    db_path = get_db_path()
+    db_path = DB_PATH
     conn = get_connection(db_path)
 
     try:
