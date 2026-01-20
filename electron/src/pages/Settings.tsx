@@ -2,9 +2,38 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AppSettings, BlocklistEntry } from '../types/trace-api';
 
+interface AllSettings {
+  config: {
+    appearance: { show_in_dock: boolean; launch_at_login: boolean };
+    capture: {
+      summarization_interval_minutes: number;
+      daily_revision_hour: number;
+      blocked_apps: string[];
+      blocked_domains: string[];
+    };
+    notifications: { weekly_digest_enabled: boolean; weekly_digest_day: string };
+    shortcuts: { open_trace: string };
+    data: { retention_months: number | null };
+    api_key: string | null;
+  };
+  options: {
+    summarization_intervals: number[];
+    daily_revision_hours: number[];
+    weekly_digest_days: string[];
+    retention_months: (number | null)[];
+  };
+  has_api_key: boolean;
+  paths: {
+    data_dir: string;
+    notes_dir: string;
+    db_path: string;
+    cache_dir: string;
+  };
+}
+
 export function Settings() {
   const navigate = useNavigate();
-  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [settings, setSettings] = useState<AllSettings | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -44,10 +73,45 @@ export function Settings() {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const result = await window.traceAPI.settings.get();
-        setSettings(result);
+        const result = await window.traceAPI.settings.getAll();
+        setSettings(result as AllSettings);
       } catch (err) {
-        setMessage({ type: 'error', text: 'Failed to load settings' });
+        console.error('Failed to load all settings:', err);
+        // Fallback to legacy get
+        try {
+          const legacyResult = await window.traceAPI.settings.get();
+          // Map legacy result to new structure
+          setSettings({
+            config: {
+              appearance: { show_in_dock: true, launch_at_login: false },
+              capture: {
+                summarization_interval_minutes: 60,
+                daily_revision_hour: 3,
+                blocked_apps: [],
+                blocked_domains: [],
+              },
+              notifications: { weekly_digest_enabled: true, weekly_digest_day: 'sunday' },
+              shortcuts: { open_trace: 'CommandOrControl+Shift+T' },
+              data: { retention_months: null },
+              api_key: null,
+            },
+            options: {
+              summarization_intervals: [30, 60, 120, 240],
+              daily_revision_hours: Array.from({ length: 24 }, (_, i) => i),
+              weekly_digest_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+              retention_months: [null, 6, 12, 24],
+            },
+            has_api_key: (legacyResult as AppSettings).has_api_key,
+            paths: {
+              data_dir: (legacyResult as AppSettings).data_dir,
+              notes_dir: (legacyResult as AppSettings).notes_dir,
+              db_path: (legacyResult as AppSettings).db_path,
+              cache_dir: (legacyResult as AppSettings).cache_dir,
+            },
+          });
+        } catch (fallbackErr) {
+          setMessage({ type: 'error', text: 'Failed to load settings' });
+        }
       } finally {
         setLoading(false);
       }
@@ -84,12 +148,32 @@ export function Settings() {
       setMessage({ type: 'success', text: 'API key saved successfully' });
       setApiKey('');
       // Refresh settings
-      const result = await window.traceAPI.settings.get();
-      setSettings(result);
+      const result = await window.traceAPI.settings.getAll();
+      setSettings(result as AllSettings);
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save API key' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSettingChange = async (key: string, value: unknown) => {
+    try {
+      const result = await window.traceAPI.settings.setValue(key, value);
+      if (result.success) {
+        // Refresh settings
+        const updated = await window.traceAPI.settings.getAll();
+        setSettings(updated as AllSettings);
+
+        // Apply appearance changes immediately
+        if (key === 'appearance.show_in_dock') {
+          await window.traceAPI.appearance.setDockVisibility(value as boolean);
+        } else if (key === 'appearance.launch_at_login') {
+          await window.traceAPI.appearance.setLaunchAtLogin(value as boolean);
+        }
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save setting' });
     }
   };
 
@@ -172,6 +256,26 @@ export function Settings() {
     }
   };
 
+  const formatHour = (hour: number) => {
+    if (hour === 0) return '12:00 AM';
+    if (hour === 12) return '12:00 PM';
+    if (hour < 12) return `${hour}:00 AM`;
+    return `${hour - 12}:00 PM`;
+  };
+
+  const formatInterval = (minutes: number) => {
+    if (minutes < 60) return `${minutes} minutes`;
+    if (minutes === 60) return '1 hour';
+    return `${minutes / 60} hours`;
+  };
+
+  const formatRetention = (months: number | null) => {
+    if (months === null) return 'Forever';
+    if (months === 12) return '1 year';
+    if (months === 24) return '2 years';
+    return `${months} months`;
+  };
+
   if (loading) {
     return (
       <div style={styles.container}>
@@ -247,20 +351,162 @@ export function Settings() {
         </section>
 
         <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Appearance</h2>
+          <div style={styles.field}>
+            <div style={styles.toggleRow}>
+              <div>
+                <label style={styles.label}>Show in Dock</label>
+                <p style={styles.description}>When off, Trace only appears in the menu bar.</p>
+              </div>
+              <label style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={settings?.config.appearance.show_in_dock ?? true}
+                  onChange={(e) => handleSettingChange('appearance.show_in_dock', e.target.checked)}
+                />
+                <span style={styles.slider}></span>
+              </label>
+            </div>
+          </div>
+          <div style={styles.field}>
+            <div style={styles.toggleRow}>
+              <div>
+                <label style={styles.label}>Launch at Login</label>
+                <p style={styles.description}>Start Trace automatically when you log in.</p>
+              </div>
+              <label style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={settings?.config.appearance.launch_at_login ?? false}
+                  onChange={(e) => handleSettingChange('appearance.launch_at_login', e.target.checked)}
+                />
+                <span style={styles.slider}></span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Capture & Processing</h2>
+          <div style={styles.field}>
+            <label style={styles.label}>Summarization Interval</label>
+            <p style={styles.description}>How often to generate hourly summary notes.</p>
+            <select
+              value={settings?.config.capture.summarization_interval_minutes ?? 60}
+              onChange={(e) => handleSettingChange('capture.summarization_interval_minutes', Number(e.target.value))}
+              style={styles.select}
+            >
+              {settings?.options.summarization_intervals.map((interval) => (
+                <option key={interval} value={interval}>
+                  {formatInterval(interval)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Daily Revision Time</label>
+            <p style={styles.description}>When to run daily processing (revision, cleanup).</p>
+            <select
+              value={settings?.config.capture.daily_revision_hour ?? 3}
+              onChange={(e) => handleSettingChange('capture.daily_revision_hour', Number(e.target.value))}
+              style={styles.select}
+            >
+              {settings?.options.daily_revision_hours.map((hour) => (
+                <option key={hour} value={hour}>
+                  {formatHour(hour)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Notifications</h2>
+          <div style={styles.field}>
+            <div style={styles.toggleRow}>
+              <div>
+                <label style={styles.label}>Weekly Digest</label>
+                <p style={styles.description}>Receive a weekly summary notification.</p>
+              </div>
+              <label style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={settings?.config.notifications.weekly_digest_enabled ?? true}
+                  onChange={(e) => handleSettingChange('notifications.weekly_digest_enabled', e.target.checked)}
+                />
+                <span style={styles.slider}></span>
+              </label>
+            </div>
+          </div>
+          {settings?.config.notifications.weekly_digest_enabled && (
+            <div style={styles.field}>
+              <label style={styles.label}>Digest Day</label>
+              <p style={styles.description}>Day of the week to send the weekly digest.</p>
+              <select
+                value={settings?.config.notifications.weekly_digest_day ?? 'sunday'}
+                onChange={(e) => handleSettingChange('notifications.weekly_digest_day', e.target.value)}
+                style={styles.select}
+              >
+                {settings?.options.weekly_digest_days.map((day) => (
+                  <option key={day} value={day}>
+                    {day.charAt(0).toUpperCase() + day.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </section>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Keyboard Shortcuts</h2>
+          <div style={styles.field}>
+            <label style={styles.label}>Open Trace</label>
+            <p style={styles.description}>Global shortcut to show/hide the Trace window.</p>
+            <div style={styles.shortcutDisplay}>
+              {settings?.config.shortcuts.open_trace?.replace('CommandOrControl', '⌘').replace('+', ' + ') ?? '⌘ + Shift + T'}
+            </div>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Open Settings</label>
+            <p style={styles.description}>Open settings from anywhere in the app.</p>
+            <div style={styles.shortcutDisplay}>⌘ + ,</div>
+          </div>
+        </section>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Data Management</h2>
+          <div style={styles.field}>
+            <label style={styles.label}>Data Retention</label>
+            <p style={styles.description}>How long to keep notes and data. Older data will be automatically deleted.</p>
+            <select
+              value={settings?.config.data.retention_months ?? ''}
+              onChange={(e) => handleSettingChange('data.retention_months', e.target.value === '' ? null : Number(e.target.value))}
+              style={styles.select}
+            >
+              {settings?.options.retention_months.map((months) => (
+                <option key={months ?? 'forever'} value={months ?? ''}>
+                  {formatRetention(months)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+
+        <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Data Directories</h2>
           {settings && (
             <>
               <div style={styles.field}>
                 <label style={styles.label}>Notes Directory</label>
-                <p style={styles.pathValue}>{settings.notes_dir}</p>
+                <p style={styles.pathValue}>{settings.paths.notes_dir}</p>
               </div>
               <div style={styles.field}>
                 <label style={styles.label}>Database Path</label>
-                <p style={styles.pathValue}>{settings.db_path}</p>
+                <p style={styles.pathValue}>{settings.paths.db_path}</p>
               </div>
               <div style={styles.field}>
                 <label style={styles.label}>Cache Directory</label>
-                <p style={styles.pathValue}>{settings.cache_dir}</p>
+                <p style={styles.pathValue}>{settings.paths.cache_dir}</p>
               </div>
             </>
           )}
@@ -426,6 +672,7 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: '600px',
     width: '100%',
     margin: '0 auto',
+    overflowY: 'auto',
   },
   header: {
     display: 'flex',
@@ -555,13 +802,33 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     lineHeight: 1.6,
   },
-  // Blocklist styles
-  blocklistForm: {
+  // Toggle switch styles
+  toggleRow: {
     display: 'flex',
-    gap: '0.5rem',
-    marginBottom: '1rem',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '1rem',
   },
+  switch: {
+    position: 'relative',
+    display: 'inline-block',
+    width: '44px',
+    height: '24px',
+    flexShrink: 0,
+  },
+  slider: {
+    position: 'absolute',
+    cursor: 'pointer',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    transition: '.2s',
+    borderRadius: '24px',
+  },
+  // Select styles
   select: {
     backgroundColor: 'var(--bg-secondary)',
     border: '1px solid var(--border)',
@@ -571,6 +838,25 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-primary)',
     outline: 'none',
     cursor: 'pointer',
+    minWidth: '200px',
+  },
+  // Shortcut display
+  shortcutDisplay: {
+    display: 'inline-block',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '6px',
+    padding: '0.5rem 0.75rem',
+    fontSize: '0.9rem',
+    fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace',
+    color: 'var(--text-primary)',
+  },
+  // Blocklist styles
+  blocklistForm: {
+    display: 'flex',
+    gap: '0.5rem',
+    marginBottom: '1rem',
+    flexWrap: 'wrap',
   },
   initDefaultsButton: {
     backgroundColor: 'transparent',
@@ -687,5 +973,36 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
   },
 };
+
+// Add global CSS for switch styling (checkboxes)
+const styleTag = document.createElement('style');
+styleTag.textContent = `
+  .settings-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .settings-switch input:checked + span {
+    background-color: var(--accent);
+  }
+  .settings-switch span:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .2s;
+    border-radius: 50%;
+  }
+  .settings-switch input:checked + span:before {
+    transform: translateX(20px);
+  }
+`;
+if (!document.head.querySelector('style[data-settings]')) {
+  styleTag.setAttribute('data-settings', 'true');
+  document.head.appendChild(styleTag);
+}
 
 export default Settings;

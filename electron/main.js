@@ -371,6 +371,185 @@ let shortcuts = {
   quickCapture: 'CommandOrControl+Shift+N',
 };
 
+// Store for appearance settings
+let appearanceSettings = {
+  showInDock: true,
+  launchAtLogin: false,
+};
+
+// Load settings from Python backend config
+async function loadSettingsFromConfig() {
+  if (!pythonReady) return;
+  try {
+    const result = await callPython('settings.get_all', {});
+    if (result) {
+      // Load appearance settings
+      if (result.appearance) {
+        appearanceSettings.showInDock = result.appearance.show_in_dock !== false;
+        appearanceSettings.launchAtLogin = result.appearance.launch_at_login === true;
+        applyDockVisibility();
+        applyLaunchAtLogin();
+      }
+      // Load shortcuts
+      if (result.shortcuts && result.shortcuts.open_trace) {
+        shortcuts.toggleWindow = result.shortcuts.open_trace;
+        registerGlobalShortcuts();
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load settings from config:', err);
+  }
+}
+
+// Apply dock visibility setting
+function applyDockVisibility() {
+  if (process.platform !== 'darwin') return;
+
+  if (appearanceSettings.showInDock) {
+    app.dock.show();
+  } else {
+    app.dock.hide();
+  }
+}
+
+// Apply launch at login setting
+function applyLaunchAtLogin() {
+  app.setLoginItemSettings({
+    openAtLogin: appearanceSettings.launchAtLogin,
+    openAsHidden: !appearanceSettings.showInDock,
+  });
+}
+
+// Create application menu (for macOS Cmd+, settings shortcut)
+function createAppMenu() {
+  const isMac = process.platform === 'darwin';
+
+  const template = [
+    // App menu (macOS only)
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Settings...',
+          accelerator: 'CommandOrControl+,',
+          click: () => {
+            openSettings();
+          }
+        },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    // File menu
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Chat',
+          accelerator: 'CommandOrControl+N',
+          click: () => {
+            if (mainWindow) {
+              mainWindow.show();
+              mainWindow.focus();
+              mainWindow.webContents.send('shortcut:quickCapture');
+            }
+          }
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    // Edit menu
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac ? [
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' },
+        ] : [
+          { role: 'delete' },
+          { type: 'separator' },
+          { role: 'selectAll' }
+        ])
+      ]
+    },
+    // View menu
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    // Window menu
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac ? [
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ] : [
+          { role: 'close' }
+        ])
+      ]
+    },
+    // Help menu
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'View on GitHub',
+          click: async () => {
+            await shell.openExternal('https://github.com/anthropics/trace');
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+// Open settings page
+function openSettings() {
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+  } else {
+    createWindow();
+  }
+  if (mainWindow && mainWindow.webContents) {
+    mainWindow.webContents.send('tray:openSettings');
+  }
+}
+
 // Register global keyboard shortcuts
 function registerGlobalShortcuts() {
   // Unregister any existing shortcuts first
@@ -444,6 +623,9 @@ function getShortcuts() {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.whenReady().then(async () => {
+  // Create application menu (for Cmd+, settings shortcut)
+  createAppMenu();
+
   // Start Python backend before creating window
   startPythonBackend();
 
@@ -458,6 +640,19 @@ app.whenReady().then(async () => {
   console.log('Startup permissions:', permissions);
 
   createWindow();
+
+  // Load settings from config once backend is ready (with retry)
+  const waitForBackendAndLoadSettings = async () => {
+    let attempts = 0;
+    while (!pythonReady && attempts < 30) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      attempts++;
+    }
+    if (pythonReady) {
+      await loadSettingsFromConfig();
+    }
+  };
+  waitForBackendAndLoadSettings();
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
@@ -614,6 +809,26 @@ ipcMain.handle('permissions:openSettings', async (event, permission) => {
     return { success: true };
   }
   return { success: false, error: 'Unknown permission' };
+});
+
+// Appearance settings handlers (for dock toggle, launch at login)
+ipcMain.handle('appearance:setDockVisibility', async (event, showInDock) => {
+  appearanceSettings.showInDock = showInDock;
+  applyDockVisibility();
+  return { success: true };
+});
+
+ipcMain.handle('appearance:setLaunchAtLogin', async (event, launchAtLogin) => {
+  appearanceSettings.launchAtLogin = launchAtLogin;
+  applyLaunchAtLogin();
+  return { success: true };
+});
+
+ipcMain.handle('appearance:get', async () => {
+  return {
+    showInDock: appearanceSettings.showInDock,
+    launchAtLogin: appearanceSettings.launchAtLogin,
+  };
 });
 
 // Dialog handlers for export
