@@ -74,5 +74,7 @@ extraResources:
       - "**/*"
 
 # NPM configuration
-npmRebuild: true
+# Disable native module rebuild - we don't have native modules and it causes
+# compatibility issues with Node.js 20 and @electron/rebuild
+npmRebuild: false
 removePackageScripts: true
