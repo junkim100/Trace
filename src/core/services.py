@@ -23,6 +23,7 @@ from enum import Enum
 from pathlib import Path
 
 from src.capture.daemon import CaptureDaemon
+from src.core.config import get_capture_config
 from src.core.paths import DB_PATH
 from src.jobs.backfill import BackfillDetector, BackfillResult
 from src.jobs.daily import DailyJobScheduler
@@ -309,6 +310,11 @@ class ServiceManager:
             with self._lock:
                 self._services["hourly"].state = ServiceState.STARTING
 
+            # Read summarization interval from config
+            capture_config = get_capture_config()
+            interval_minutes = capture_config.get("summarization_interval_minutes", 60)
+            logger.info(f"Configured summarization interval: {interval_minutes} minutes")
+
             self._hourly_scheduler = HourlyJobScheduler(
                 db_path=self.db_path,
                 api_key=self.api_key,
@@ -350,9 +356,14 @@ class ServiceManager:
             with self._lock:
                 self._services["daily"].state = ServiceState.STARTING
 
+            # Read daily revision hour from config
+            capture_config = get_capture_config()
+            daily_revision_hour = capture_config.get("daily_revision_hour", 3)
+
             self._daily_scheduler = DailyJobScheduler(
                 db_path=self.db_path,
                 api_key=self.api_key,
+                run_hour=daily_revision_hour,
             )
             self._daily_scheduler.start()
 

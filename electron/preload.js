@@ -199,12 +199,51 @@ contextBridge.exposeInMainWorld('traceAPI', {
 
   // Settings methods
   settings: {
-    // Get current settings
+    // Get all settings with metadata (config, options, defaults, paths)
+    getAll: () => ipcRenderer.invoke('python:call', 'settings.get_all', {}),
+
+    // Get current settings (legacy compatibility)
     get: () => ipcRenderer.invoke('python:call', 'settings.get', {}),
+
+    // Set one or more settings (can be nested or flat key paths)
+    set: (settings) =>
+      ipcRenderer.invoke('python:call', 'settings.set', { settings }),
+
+    // Set a single setting value by key path (e.g., "capture.summarization_interval_minutes")
+    setValue: (key, value) =>
+      ipcRenderer.invoke('python:call', 'settings.set_value', { key, value }),
 
     // Set API key
     setApiKey: (apiKey) =>
       ipcRenderer.invoke('python:call', 'settings.set_api_key', { api_key: apiKey }),
+
+    // Appearance settings (dock visibility, launch at login)
+    getAppearance: () => ipcRenderer.invoke('python:call', 'settings.get_appearance', {}),
+    setAppearance: (settings) =>
+      ipcRenderer.invoke('python:call', 'settings.set_appearance', settings),
+
+    // Capture settings (intervals, blocklist)
+    getCapture: () => ipcRenderer.invoke('python:call', 'settings.get_capture', {}),
+    setCapture: (settings) =>
+      ipcRenderer.invoke('python:call', 'settings.set_capture', settings),
+
+    // Notification settings (weekly digest)
+    getNotifications: () => ipcRenderer.invoke('python:call', 'settings.get_notifications', {}),
+    setNotifications: (settings) =>
+      ipcRenderer.invoke('python:call', 'settings.set_notifications', settings),
+
+    // Keyboard shortcut settings
+    getShortcuts: () => ipcRenderer.invoke('python:call', 'settings.get_shortcuts', {}),
+    setShortcuts: (settings) =>
+      ipcRenderer.invoke('python:call', 'settings.set_shortcuts', settings),
+
+    // Data management settings (retention)
+    getData: () => ipcRenderer.invoke('python:call', 'settings.get_data', {}),
+    setData: (settings) =>
+      ipcRenderer.invoke('python:call', 'settings.set_data', settings),
+
+    // Reset all settings to defaults
+    reset: () => ipcRenderer.invoke('python:call', 'settings.reset', {}),
   },
 
   // Export methods (for backup/export)
@@ -344,6 +383,18 @@ contextBridge.exposeInMainWorld('traceAPI', {
         bundle_id: bundleId,
         url: url,
       }),
+  },
+
+  // Appearance methods (dock visibility, launch at login)
+  appearance: {
+    // Get current appearance settings
+    get: () => ipcRenderer.invoke('appearance:get'),
+
+    // Set dock visibility (macOS)
+    setDockVisibility: (showInDock) => ipcRenderer.invoke('appearance:setDockVisibility', showInDock),
+
+    // Set launch at login
+    setLaunchAtLogin: (launchAtLogin) => ipcRenderer.invoke('appearance:setLaunchAtLogin', launchAtLogin),
   },
 
   // Window control methods
