@@ -763,6 +763,9 @@ export interface TraceAPI {
   /** Weekly digest API */
   digest: DigestAPI;
 
+  /** Pattern detection API */
+  patterns: PatternsAPI;
+
   /** Notes API */
   notes: NotesAPI;
 
