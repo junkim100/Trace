@@ -10,6 +10,7 @@ let pythonReady = false;
 let pendingRequests = new Map(); // id -> { resolve, reject, timeout }
 let requestId = 0;
 let tray = null;
+let pythonReadline = null; // Readline interface for Python stdout (must be closed to prevent memory leak)
 
 // Get the data directory path (where notes, db, cache are stored)
 function getDataPath() {
@@ -158,12 +159,13 @@ function startPythonBackend() {
   });
 
   // Create readline interface for reading JSON lines from stdout
-  const rl = readline.createInterface({
+  // Store in module-level variable so we can clean it up when Python exits
+  pythonReadline = readline.createInterface({
     input: pythonProcess.stdout,
     crlfDelay: Infinity,
   });
 
-  rl.on('line', (line) => {
+  pythonReadline.on('line', (line) => {
     try {
       const message = JSON.parse(line);
 
@@ -214,6 +216,12 @@ function startPythonBackend() {
     console.log(`Python backend exited (code: ${code}, signal: ${signal})`);
     pythonReady = false;
     pythonProcess = null;
+
+    // Clean up readline interface to prevent memory leak
+    if (pythonReadline) {
+      pythonReadline.close();
+      pythonReadline = null;
+    }
 
     // Reject all pending requests
     for (const [id, { reject, timeout }] of pendingRequests) {
