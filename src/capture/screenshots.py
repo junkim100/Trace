@@ -245,37 +245,48 @@ class MultiMonitorCapture:
         if image is None:
             return None
 
-        original_width, original_height = image.size
+        try:
+            original_width, original_height = image.size
 
-        # Downscale if necessary
-        image = _downscale_image(image)
-        final_width, final_height = image.size
+            # Downscale if necessary
+            downscaled = _downscale_image(image)
+            # Close original if a new image was created
+            if downscaled is not image:
+                image.close()
+                image = downscaled
 
-        # Convert to RGB for JPEG (remove alpha channel)
-        if image.mode == "RGBA":
-            image = image.convert("RGB")
+            final_width, final_height = image.size
 
-        # Generate unique ID and filename
-        screenshot_id = str(uuid.uuid4())
-        ts_str = timestamp.strftime("%H%M%S%f")[:-3]  # HHMMSS + milliseconds
-        filename = f"{ts_str}_m{monitor.monitor_id}_{screenshot_id[:8]}.jpg"
-        output_path = output_dir / filename
+            # Convert to RGB for JPEG (remove alpha channel)
+            if image.mode == "RGBA":
+                rgb_image = image.convert("RGB")
+                image.close()  # Close the RGBA image
+                image = rgb_image
 
-        # Save the image
-        image.save(output_path, "JPEG", quality=self.jpeg_quality)
+            # Generate unique ID and filename
+            screenshot_id = str(uuid.uuid4())
+            ts_str = timestamp.strftime("%H%M%S%f")[:-3]  # HHMMSS + milliseconds
+            filename = f"{ts_str}_m{monitor.monitor_id}_{screenshot_id[:8]}.jpg"
+            output_path = output_dir / filename
 
-        logger.debug(f"Captured monitor {monitor.monitor_id}: {output_path}")
+            # Save the image
+            image.save(output_path, "JPEG", quality=self.jpeg_quality)
 
-        return CapturedScreenshot(
-            screenshot_id=screenshot_id,
-            timestamp=timestamp,
-            monitor_id=monitor.monitor_id,
-            path=output_path,
-            width=final_width,
-            height=final_height,
-            original_width=original_width,
-            original_height=original_height,
-        )
+            logger.debug(f"Captured monitor {monitor.monitor_id}: {output_path}")
+
+            return CapturedScreenshot(
+                screenshot_id=screenshot_id,
+                timestamp=timestamp,
+                monitor_id=monitor.monitor_id,
+                path=output_path,
+                width=final_width,
+                height=final_height,
+                original_width=original_width,
+                original_height=original_height,
+            )
+        finally:
+            # CRITICAL: Always close the final image to prevent memory leak
+            image.close()
 
 
 if __name__ == "__main__":
