@@ -99,6 +99,8 @@ class EvidenceBuilder:
         # Track recently processed documents to avoid redundant extraction
         # Maps file_path -> (extraction_timestamp, text_id)
         self._recent_pdfs: dict[str, tuple[datetime, str]] = {}
+        # Maximum number of PDFs to cache (prevents unbounded memory growth)
+        self._max_pdf_cache_size = 100
 
         # Statistics
         self._stats = EvidenceStats(
@@ -342,6 +344,13 @@ class EvidenceBuilder:
 
         # Update tracking
         self._recent_pdfs[file_path_str] = (timestamp, buffer.text_id)
+
+        # LRU eviction: remove oldest entries if cache exceeds max size
+        # This prevents unbounded memory growth from viewing many unique PDFs
+        while len(self._recent_pdfs) > self._max_pdf_cache_size:
+            oldest_key = min(self._recent_pdfs, key=lambda k: self._recent_pdfs[k][0])
+            del self._recent_pdfs[oldest_key]
+
         self._stats.pdf_extractions += 1
         self._stats.total_tokens += buffer.token_estimate
 

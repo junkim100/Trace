@@ -61,18 +61,27 @@ def compute_perceptual_hash(
     Returns:
         HashResult with string and ImageHash representations
     """
+    # Track whether we opened the image (so we know to close it)
+    should_close = False
     if isinstance(image_or_path, (str, Path)):
         image = Image.open(image_or_path)
+        should_close = True  # We opened it, we must close it
     else:
         image = image_or_path
 
-    # Use difference hash (dHash) for better robustness
-    hash_value = imagehash.dhash(image, hash_size=hash_size)
+    try:
+        # Use difference hash (dHash) for better robustness
+        hash_value = imagehash.dhash(image, hash_size=hash_size)
 
-    return HashResult(
-        hash_str=str(hash_value),
-        hash_value=hash_value,
-    )
+        return HashResult(
+            hash_str=str(hash_value),
+            hash_value=hash_value,
+        )
+    finally:
+        # CRITICAL: Close the image if we opened it to prevent memory leak
+        # Without this, each capture (1/second = 86,400/day) leaks ~1-10MB
+        if should_close:
+            image.close()
 
 
 def compute_hamming_distance(
@@ -207,6 +216,24 @@ class DuplicateTracker:
             self._last_hashes.clear()
         else:
             self._last_hashes.pop(monitor_id, None)
+
+    def cleanup_stale_monitors(self, valid_monitor_ids: set[int]) -> int:
+        """
+        Remove hashes for monitors that no longer exist.
+
+        This prevents unbounded growth if monitor IDs cycle or change
+        (e.g., when connecting/disconnecting external monitors).
+
+        Args:
+            valid_monitor_ids: Set of currently active monitor IDs
+
+        Returns:
+            Number of stale entries removed
+        """
+        stale = [mid for mid in self._last_hashes if mid not in valid_monitor_ids]
+        for mid in stale:
+            del self._last_hashes[mid]
+        return len(stale)
 
 
 def compute_diff_score(

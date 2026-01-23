@@ -10,6 +10,7 @@ let pythonReady = false;
 let pendingRequests = new Map(); // id -> { resolve, reject, timeout }
 let requestId = 0;
 let tray = null;
+let pythonReadline = null; // Readline interface for Python stdout (must be closed to prevent memory leak)
 
 // Get the data directory path (where notes, db, cache are stored)
 function getDataPath() {
@@ -158,12 +159,13 @@ function startPythonBackend() {
   });
 
   // Create readline interface for reading JSON lines from stdout
-  const rl = readline.createInterface({
+  // Store in module-level variable so we can clean it up when Python exits
+  pythonReadline = readline.createInterface({
     input: pythonProcess.stdout,
     crlfDelay: Infinity,
   });
 
-  rl.on('line', (line) => {
+  pythonReadline.on('line', (line) => {
     try {
       const message = JSON.parse(line);
 
@@ -214,6 +216,12 @@ function startPythonBackend() {
     console.log(`Python backend exited (code: ${code}, signal: ${signal})`);
     pythonReady = false;
     pythonProcess = null;
+
+    // Clean up readline interface to prevent memory leak
+    if (pythonReadline) {
+      pythonReadline.close();
+      pythonReadline = null;
+    }
 
     // Reject all pending requests
     for (const [id, { reject, timeout }] of pendingRequests) {
@@ -539,14 +547,25 @@ function createAppMenu() {
 
 // Open settings page
 function openSettings() {
+  const sendSettingsEvent = () => {
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('tray:openSettings');
+    }
+  };
+
   if (mainWindow) {
     mainWindow.show();
     mainWindow.focus();
+    // Small delay to ensure React app is mounted and listening
+    setTimeout(sendSettingsEvent, 100);
   } else {
     createWindow();
-  }
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('tray:openSettings');
+    // Wait for window to finish loading before sending event
+    if (mainWindow) {
+      mainWindow.webContents.once('did-finish-load', () => {
+        setTimeout(sendSettingsEvent, 100);
+      });
+    }
   }
 }
 
