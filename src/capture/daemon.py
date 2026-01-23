@@ -138,6 +138,33 @@ class CaptureDaemon:
         """
         self._callbacks.append(callback)
 
+    def remove_callback(self, callback: Callable[[CaptureSnapshot], None]) -> bool:
+        """
+        Remove a callback from the list.
+
+        Args:
+            callback: Function to remove
+
+        Returns:
+            True if callback was found and removed, False otherwise
+        """
+        try:
+            self._callbacks.remove(callback)
+            return True
+        except ValueError:
+            return False
+
+    def clear_callbacks(self) -> int:
+        """
+        Remove all callbacks.
+
+        Returns:
+            Number of callbacks that were removed
+        """
+        count = len(self._callbacks)
+        self._callbacks.clear()
+        return count
+
     def start(self, blocking: bool = False) -> None:
         """
         Start the capture daemon.
@@ -334,6 +361,7 @@ class CaptureDaemon:
         """Store a screenshot record in the database."""
         try:
             conn = get_connection(self.db_path)
+            cursor = None
             try:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -356,6 +384,8 @@ class CaptureDaemon:
                 )
                 conn.commit()
             finally:
+                if cursor:
+                    cursor.close()
                 conn.close()
         except sqlite3.Error as e:
             logger.error(f"Failed to store screenshot: {e}")
@@ -470,6 +500,7 @@ if __name__ == "__main__":
         """Show capture statistics from the database."""
 
         conn = get_connection()
+        cursor = None
         try:
             cursor = conn.cursor()
 
@@ -498,6 +529,8 @@ if __name__ == "__main__":
                 "recent_events": recent_events,
             }
         finally:
+            if cursor:
+                cursor.close()
             conn.close()
 
     fire.Fire(

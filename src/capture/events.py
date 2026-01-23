@@ -198,15 +198,30 @@ class EventTracker:
 
         return closed_event
 
+    # Maximum evidence IDs to keep in memory per event
+    # At 1 capture/second, 100 = ~1.5 minutes of evidence
+    # Older evidence is still linked via screenshots table's event association
+    MAX_EVIDENCE_IDS = 100
+
     def add_evidence(self, evidence_id: str) -> None:
         """
         Add an evidence ID (screenshot, text buffer) to the current event.
+
+        Note: Only the most recent MAX_EVIDENCE_IDS are kept in memory to
+        prevent unbounded memory growth during long event spans.
 
         Args:
             evidence_id: ID of the evidence to link
         """
         if self._current_event is not None:
             self._current_event.evidence_ids.append(evidence_id)
+            # Cap the list to prevent memory leak during long events
+            # (e.g., 8 hours in same app = 28,800 IDs at 1/second)
+            if len(self._current_event.evidence_ids) > self.MAX_EVIDENCE_IDS:
+                # Keep only the most recent evidence IDs
+                self._current_event.evidence_ids = self._current_event.evidence_ids[
+                    -self.MAX_EVIDENCE_IDS :
+                ]
 
     def get_current_event(self) -> EventSpan | None:
         """Get the current active event."""
@@ -242,6 +257,7 @@ class EventTracker:
         """Save an event to the database."""
         try:
             conn = get_connection(self.db_path)
+            cursor = None
             try:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -271,6 +287,8 @@ class EventTracker:
                 conn.commit()
                 logger.debug(f"Saved event {event.event_id}")
             finally:
+                if cursor:
+                    cursor.close()
                 conn.close()
         except sqlite3.Error as e:
             logger.error(f"Failed to save event: {e}")
@@ -291,6 +309,7 @@ def get_events_in_range(
         List of EventSpan objects
     """
     conn = get_connection(db_path)
+    cursor = None
     try:
         cursor = conn.cursor()
         cursor.execute(
@@ -327,6 +346,8 @@ def get_events_in_range(
             )
         return events
     finally:
+        if cursor:
+            cursor.close()
         conn.close()
 
 

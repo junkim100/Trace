@@ -22,7 +22,7 @@ Trace is a macOS desktop app that continuously observes digital activity, conver
    - OCR fallback for on-screen documents
    - Stores transient text buffers (deleted daily)
 
-3. **Hourly Summarizer** - Runs every hour
+3. **Hourly Summarizer** - Runs every hou
    - Selects keyframes from screenshots
    - Calls vision LLM with curated evidence
    - Outputs structured JSON + Markdown note
