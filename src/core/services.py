@@ -28,6 +28,7 @@ from src.core.paths import DB_PATH
 from src.jobs.backfill import BackfillDetector, BackfillResult
 from src.jobs.daily import DailyJobScheduler
 from src.jobs.hourly import HourlyJobScheduler
+from src.jobs.note_recovery import NoteRecoveryService, RecoveryResult
 from src.platform.notifications import (
     send_critical_notification,
     send_error_notification,
@@ -77,6 +78,9 @@ class ServiceManager:
     # Backfill check interval (only check every N health checks)
     BACKFILL_CHECK_INTERVAL = 60  # Check every 60 health checks (~1 hour)
 
+    # Note recovery check interval (only check every N health checks)
+    NOTE_RECOVERY_CHECK_INTERVAL = 60  # Check every 60 health checks (~1 hour)
+
     def __init__(
         self,
         db_path: Path | str | None = None,
@@ -98,6 +102,7 @@ class ServiceManager:
         self._daily_scheduler: DailyJobScheduler | None = None
         self._backfill_detector: BackfillDetector | None = None
         self._sleep_wake_detector: SleepWakeDetector | None = None
+        self._note_recovery: NoteRecoveryService | None = None
 
         # Service status tracking
         self._services: dict[str, ServiceStatus] = {
@@ -147,6 +152,9 @@ class ServiceManager:
 
         # Run initial backfill check (in background)
         self._schedule_backfill_check()
+
+        # Run initial note recovery check (in background)
+        self._schedule_note_recovery()
 
         # Notify about failures
         failed = [k for k, v in results.items() if not v]
@@ -260,6 +268,36 @@ class ServiceManager:
             )
 
         return self._backfill_detector.check_and_backfill(notify=notify)
+
+    def trigger_note_recovery(self, notify: bool = True) -> RecoveryResult:
+        """
+        Manually trigger note file recovery.
+
+        Checks for notes in the database that have missing files
+        and regenerates them from the stored json_payload.
+
+        Args:
+            notify: Whether to send notifications
+
+        Returns:
+            RecoveryResult with statistics
+        """
+        if self._note_recovery is None:
+            self._note_recovery = NoteRecoveryService(db_path=self.db_path)
+
+        return self._note_recovery.check_and_recover(notify=notify)
+
+    def check_missing_note_files(self) -> list[dict]:
+        """
+        Check for notes with missing files without recovering.
+
+        Returns:
+            List of note records with missing files
+        """
+        if self._note_recovery is None:
+            self._note_recovery = NoteRecoveryService(db_path=self.db_path)
+
+        return self._note_recovery.find_missing_files()
 
     # --- Private methods ---
 
@@ -418,6 +456,10 @@ class ServiceManager:
                 if self._health_check_count % self.BACKFILL_CHECK_INTERVAL == 0:
                     self._schedule_backfill_check()
 
+                # Periodic note recovery check
+                if self._health_check_count % self.NOTE_RECOVERY_CHECK_INTERVAL == 0:
+                    self._schedule_note_recovery()
+
             except Exception as e:
                 logger.error(f"Health check error: {e}")
 
@@ -543,6 +585,8 @@ class ServiceManager:
                 f"Checking for missed notes after {sleep_duration / 60:.0f}min sleep",
             )
             self._schedule_backfill_check()
+            # Also trigger note recovery to restore any missing files
+            self._schedule_note_recovery()
         else:
             logger.debug(f"Short sleep ({sleep_duration:.0f}s), skipping backfill")
 
@@ -562,6 +606,34 @@ class ServiceManager:
 
         except Exception as e:
             logger.error(f"Backfill check failed: {e}")
+
+    def _schedule_note_recovery(self) -> None:
+        """Schedule a note recovery check in a background thread."""
+        thread = threading.Thread(
+            target=self._run_note_recovery,
+            daemon=True,
+            name="note-recovery",
+        )
+        thread.start()
+
+    def _run_note_recovery(self) -> None:
+        """Run note recovery check in background."""
+        try:
+            if self._note_recovery is None:
+                self._note_recovery = NoteRecoveryService(db_path=self.db_path)
+
+            missing = self._note_recovery.find_missing_files()
+            if missing:
+                logger.info(f"Found {len(missing)} notes with missing files")
+                result = self._note_recovery.recover_all(notify=True)
+                if result.notes_recovered > 0:
+                    send_service_notification(
+                        "Note Recovery",
+                        f"Recovered {result.notes_recovered} missing note files",
+                    )
+
+        except Exception as e:
+            logger.error(f"Note recovery check failed: {e}")
 
 
 if __name__ == "__main__":

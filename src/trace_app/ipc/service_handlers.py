@@ -130,3 +130,93 @@ def handle_check_missing(params: dict[str, Any]) -> dict[str, Any]:
             "success": False,
             "error": str(e),
         }
+
+
+@handler("services.check_missing_files")
+def handle_check_missing_files(params: dict[str, Any]) -> dict[str, Any]:
+    """Check for notes with missing files without recovering.
+
+    Scans database for notes where the file_path doesn't exist on disk
+    but the json_payload is valid (can be recovered).
+    """
+    if _service_manager is None:
+        return {
+            "success": False,
+            "error": "Service manager not initialized",
+        }
+
+    try:
+        missing = _service_manager.check_missing_note_files()
+
+        return {
+            "success": True,
+            "missing_count": len(missing),
+            "missing_notes": [
+                {
+                    "note_id": n["note_id"],
+                    "note_type": n["note_type"],
+                    "file_path": n["file_path"],
+                }
+                for n in missing
+            ],
+        }
+
+    except Exception as e:
+        logger.error(f"Missing files check failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+@handler("services.recover_notes")
+def handle_recover_notes(params: dict[str, Any]) -> dict[str, Any]:
+    """Manually trigger note file recovery.
+
+    Finds notes with missing files and regenerates them from the
+    stored json_payload in the database.
+
+    Params:
+        notify: Whether to send notifications (default: True)
+    """
+    if _service_manager is None:
+        return {
+            "success": False,
+            "error": "Service manager not initialized",
+        }
+
+    notify = params.get("notify", True)
+
+    try:
+        result = _service_manager.trigger_note_recovery(notify=notify)
+
+        return {
+            "success": True,
+            "notes_scanned": result.notes_scanned,
+            "notes_missing": result.notes_missing_file,
+            "notes_recovered": result.notes_recovered,
+            "notes_failed": result.notes_failed,
+            "recovered": [
+                {
+                    "note_id": d["note_id"],
+                    "note_type": d["note_type"],
+                    "file_path": d["file_path"],
+                }
+                for d in result.recovered_details
+            ],
+            "failed": [
+                {
+                    "note_id": d["note_id"],
+                    "note_type": d["note_type"],
+                    "file_path": d["file_path"],
+                }
+                for d in result.failed_details
+            ],
+        }
+
+    except Exception as e:
+        logger.error(f"Note recovery trigger failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
