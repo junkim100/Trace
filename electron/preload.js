@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('traceAPI', {
   // Platform info
   platform: process.platform,
 
+  // App version
+  getVersion: () => ipcRenderer.invoke('app:version'),
+
   // Python backend methods
   python: {
     // Check if Python backend is ready

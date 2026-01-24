@@ -831,6 +831,9 @@ export interface TraceAPI {
   /** Current platform (darwin, win32, linux) */
   platform: string;
 
+  /** Get app version */
+  getVersion(): Promise<string>;
+
   /** Python backend methods */
   python: PythonAPI;
 

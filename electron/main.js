@@ -693,6 +693,11 @@ ipcMain.handle('ping', async () => {
   return 'pong';
 });
 
+// App version handler
+ipcMain.handle('app:version', async () => {
+  return app.getVersion();
+});
+
 // Python backend proxy handlers
 ipcMain.handle('python:ping', async () => {
   return callPython('ping');

@@ -26,6 +26,9 @@ export function Settings() {
   // Blocklist section message (separate from global message)
   const [blocklistMessage, setBlocklistMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // App version
+  const [appVersion, setAppVersion] = useState<string>('');
+
   // Export state
   const [exportLoading, setExportLoading] = useState(false);
   const [exportSummary, setExportSummary] = useState<{
@@ -111,6 +114,9 @@ export function Settings() {
     loadBlocklist();
     loadExportSummary();
     loadInstalledApps();
+
+    // Load app version
+    window.traceAPI.getVersion().then(setAppVersion).catch(() => {});
   }, []);
 
   const loadExportSummary = async () => {
@@ -736,6 +742,11 @@ export function Settings() {
               and provides time-aware chat and search.
             </p>
           </div>
+          {appVersion && (
+            <div style={styles.versionInfo}>
+              Version {appVersion}
+            </div>
+          )}
         </section>
       </main>
     </div>
@@ -1172,6 +1183,12 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'white',
     cursor: 'pointer',
     width: '100%',
+  },
+  versionInfo: {
+    marginTop: '1rem',
+    fontSize: '0.85rem',
+    color: 'var(--text-secondary)',
+    textAlign: 'center' as const,
   },
 };
 
