@@ -178,10 +178,15 @@ class SleepWakeDetector:
             run_loop = NSRunLoop.currentRunLoop()
             while self._running:
                 # Process events for a short interval
+                # Note: runMode_beforeDate_ may return immediately if there are no
+                # run loop sources (notification observers don't count as sources).
+                # We add a small sleep to prevent busy-looping in that case.
                 run_loop.runMode_beforeDate_(
                     "NSDefaultRunLoopMode",
-                    NSDate.dateWithTimeIntervalSinceNow_(1.0),
+                    NSDate.dateWithTimeIntervalSinceNow_(0.5),
                 )
+                # Sleep to prevent busy-looping if runMode_beforeDate_ returns immediately
+                time.sleep(0.5)
 
             # Cleanup
             notification_center.removeObserver_(self._observer)

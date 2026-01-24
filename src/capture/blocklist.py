@@ -526,6 +526,7 @@ DEFAULT_BLOCKLIST = {
         ("mint.com", "Mint"),
         ("mychart.com", "MyChart"),
         ("patient.portal", "Patient Portal"),
+        ("nordpass.com", "NordPass"),
     ],
 }
 

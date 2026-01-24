@@ -14,7 +14,7 @@ export function Settings() {
   // Blocklist state
   const [blocklistEntries, setBlocklistEntries] = useState<BlocklistEntry[]>([]);
   const [blocklistLoading, setBlocklistLoading] = useState(false);
-  const [newBlockType, setNewBlockType] = useState<'app' | 'domain'>('domain');
+  const [newBlockType, setNewBlockType] = useState<'app' | 'domain'>('app');
   const [newBlockPattern, setNewBlockPattern] = useState('');
   const [newBlockName, setNewBlockName] = useState('');
 
@@ -22,6 +22,9 @@ export function Settings() {
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
   const [showAppPicker, setShowAppPicker] = useState(false);
   const [appSearchQuery, setAppSearchQuery] = useState('');
+
+  // Blocklist section message (separate from global message)
+  const [blocklistMessage, setBlocklistMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Export state
   const [exportLoading, setExportLoading] = useState(false);
@@ -212,11 +215,11 @@ export function Settings() {
     try {
       const result = await window.traceAPI.blocklist.initDefaults();
       if (result.success) {
-        setMessage({ type: 'success', text: `Added ${result.added} default blocklist entries` });
+        setBlocklistMessage({ type: 'success', text: `Added ${result.added} default blocklist entries` });
         loadBlocklist();
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to initialize defaults' });
+      setBlocklistMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to initialize defaults' });
     }
   };
 
@@ -482,6 +485,17 @@ export function Settings() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Privacy Blocklist</h2>
+
+          {blocklistMessage && (
+            <div style={{
+              ...styles.message,
+              ...(blocklistMessage.type === 'success' ? styles.messageSuccess : styles.messageError),
+              marginBottom: '1rem',
+            }}>
+              {blocklistMessage.text}
+            </div>
+          )}
+
           <p style={styles.description}>
             Block specific apps and websites from being captured.
             Use this to protect sensitive activities like banking, medical, or password managers.
