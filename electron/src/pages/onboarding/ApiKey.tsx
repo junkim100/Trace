@@ -218,7 +218,7 @@ export const ApiKey: React.FC = () => {
     <OnboardingLayout currentStep={3} totalSteps={4} showBack onBack={handleBack}>
       <h1 style={styles.title}>Connect to OpenAI</h1>
       <p style={styles.subtitle}>
-        Trace uses OpenAI's API to analyze your activity<br />
+        Trace uses OpenAI&apos;s API to analyze your activity<br />
         and generate intelligent summaries.
       </p>
 
@@ -284,7 +284,7 @@ export const ApiKey: React.FC = () => {
           {error && <p style={styles.errorText}>{error}</p>}
 
           <p style={styles.helpText}>
-            Don't have an API key?{' '}
+            Don&apos;t have an API key?{' '}
             <a
               href="https://platform.openai.com/api-keys"
               target="_blank"

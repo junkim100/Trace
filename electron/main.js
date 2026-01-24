@@ -4,6 +4,11 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const readline = require('readline');
 
+// Set app name and userData path to use "Trace" (capital T) consistently
+app.setName('Trace');
+const userDataPath = path.join(app.getPath('home'), 'Library', 'Application Support', 'Trace');
+app.setPath('userData', userDataPath);
+
 let mainWindow = null;
 let pythonProcess = null;
 let pythonReady = false;
@@ -360,8 +365,8 @@ let shortcuts = {
 
 // Store for appearance settings
 let appearanceSettings = {
-  showInDock: true,
-  launchAtLogin: false,
+  showInDock: false,   // Default: OFF (menu bar only)
+  launchAtLogin: true, // Default: ON (start at login)
 };
 
 // Load settings from Python backend config
@@ -830,6 +835,12 @@ ipcMain.handle('appearance:get', async () => {
   };
 });
 
+// Shell handlers
+ipcMain.handle('shell:openExternal', async (event, url) => {
+  await shell.openExternal(url);
+  return { success: true };
+});
+
 // Dialog handlers for export
 ipcMain.handle('dialog:showSaveDialog', async (event, options) => {
   const result = await dialog.showSaveDialog(mainWindow, options);
@@ -839,6 +850,78 @@ ipcMain.handle('dialog:showSaveDialog', async (event, options) => {
 ipcMain.handle('dialog:showOpenDialog', async (event, options) => {
   const result = await dialog.showOpenDialog(mainWindow, options);
   return result;
+});
+
+// List installed applications on macOS
+ipcMain.handle('apps:list', async () => {
+  if (process.platform !== 'darwin') {
+    return { success: false, error: 'Only supported on macOS', apps: [] };
+  }
+
+  const apps = [];
+  const appDirs = ['/Applications', path.join(app.getPath('home'), 'Applications')];
+
+  for (const appDir of appDirs) {
+    if (!fs.existsSync(appDir)) continue;
+
+    try {
+      const entries = fs.readdirSync(appDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.endsWith('.app')) {
+          const appPath = path.join(appDir, entry.name);
+          const plistPath = path.join(appPath, 'Contents', 'Info.plist');
+
+          // Get app name from filename (strip .app extension)
+          const displayName = entry.name.replace(/\.app$/, '');
+
+          // Try to read bundle ID from Info.plist
+          let bundleId = null;
+          if (fs.existsSync(plistPath)) {
+            try {
+              const { execSync } = require('child_process');
+              // Use plutil to convert plist to JSON and extract bundle ID
+              const result = execSync(`plutil -extract CFBundleIdentifier raw "${plistPath}" 2>/dev/null`, {
+                encoding: 'utf-8',
+                timeout: 1000,
+              }).trim();
+              if (result && !result.includes('error')) {
+                bundleId = result;
+              }
+            } catch (e) {
+              // Fallback: try defaults read
+              try {
+                const { execSync } = require('child_process');
+                const result = execSync(`defaults read "${plistPath}" CFBundleIdentifier 2>/dev/null`, {
+                  encoding: 'utf-8',
+                  timeout: 1000,
+                }).trim();
+                if (result) {
+                  bundleId = result;
+                }
+              } catch (e2) {
+                // Could not get bundle ID, skip this app for blocklist purposes
+              }
+            }
+          }
+
+          if (bundleId) {
+            apps.push({
+              name: displayName,
+              bundleId: bundleId,
+              path: appPath,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`Error reading ${appDir}:`, err);
+    }
+  }
+
+  // Sort by name
+  apps.sort((a, b) => a.name.localeCompare(b.name));
+
+  return { success: true, apps };
 });
 
 // Create system tray

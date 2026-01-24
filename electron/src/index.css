@@ -36,7 +36,8 @@ body {
 }
 
 .titlebar button,
-.titlebar input {
+.titlebar input,
+.no-drag {
   -webkit-app-region: no-drag;
 }
 

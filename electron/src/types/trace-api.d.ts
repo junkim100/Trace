@@ -798,6 +798,32 @@ export interface BlocklistAPI {
   check(bundleId?: string | null, url?: string | null): Promise<BlocklistCheckResponse>;
 }
 
+/** Installed application info */
+export interface InstalledApp {
+  name: string;
+  bundleId: string;
+  path: string;
+}
+
+/** Installed apps list response */
+export interface InstalledAppsResponse {
+  success: boolean;
+  apps: InstalledApp[];
+  error?: string;
+}
+
+/** Installed apps API methods */
+export interface AppsAPI {
+  /** List installed applications (macOS only) */
+  list(): Promise<InstalledAppsResponse>;
+}
+
+/** Shell API methods */
+export interface ShellAPI {
+  /** Open external URL */
+  openExternal(url: string): Promise<{ success: boolean }>;
+}
+
 export interface TraceAPI {
   /** Ping the Electron main process */
   ping(): Promise<string>;
@@ -855,6 +881,12 @@ export interface TraceAPI {
 
   /** Tray menu events */
   tray: TrayAPI;
+
+  /** Shell utilities */
+  shell: ShellAPI;
+
+  /** Installed apps (macOS) */
+  apps: AppsAPI;
 }
 
 declare global {

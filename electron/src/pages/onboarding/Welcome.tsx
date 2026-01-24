@@ -140,7 +140,7 @@ export const Welcome: React.FC = () => {
 
       <p style={styles.permissionNote}>
         To make this work, Trace needs a few permissions.<br />
-        We'll guide you through each one.
+        We&apos;ll guide you through each one.
       </p>
 
       <button

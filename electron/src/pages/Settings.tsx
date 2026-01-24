@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { AllSettings, AppSettings, BlocklistEntry } from '../types/trace-api';
+import type { AllSettings, AppSettings, BlocklistEntry, InstalledApp } from '../types/trace-api';
 
 export function Settings() {
   const navigate = useNavigate();
@@ -17,6 +17,11 @@ export function Settings() {
   const [newBlockType, setNewBlockType] = useState<'app' | 'domain'>('domain');
   const [newBlockPattern, setNewBlockPattern] = useState('');
   const [newBlockName, setNewBlockName] = useState('');
+
+  // Installed apps state (for app picker)
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
+  const [showAppPicker, setShowAppPicker] = useState(false);
+  const [appSearchQuery, setAppSearchQuery] = useState('');
 
   // Export state
   const [exportLoading, setExportLoading] = useState(false);
@@ -41,6 +46,17 @@ export function Settings() {
     }
   };
 
+  const loadInstalledApps = async () => {
+    try {
+      const result = await window.traceAPI.apps.list();
+      if (result.success) {
+        setInstalledApps(result.apps);
+      }
+    } catch (err) {
+      console.error('Failed to load installed apps:', err);
+    }
+  };
+
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -54,7 +70,7 @@ export function Settings() {
           // Map legacy result to new structure
           setSettings({
             config: {
-              appearance: { show_in_dock: true, launch_at_login: false },
+              appearance: { show_in_dock: false, launch_at_login: true },
               capture: {
                 summarization_interval_minutes: 60,
                 daily_revision_hour: 3,
@@ -91,6 +107,7 @@ export function Settings() {
     loadSettings();
     loadBlocklist();
     loadExportSummary();
+    loadInstalledApps();
   }, []);
 
   const loadExportSummary = async () => {
@@ -332,7 +349,7 @@ export function Settings() {
               <label className="settings-switch" style={styles.switch}>
                 <input
                   type="checkbox"
-                  checked={settings?.config.appearance.show_in_dock ?? true}
+                  checked={settings?.config.appearance.show_in_dock ?? false}
                   onChange={(e) => handleSettingChange('appearance.show_in_dock', e.target.checked)}
                 />
                 <span style={styles.slider}></span>
@@ -348,7 +365,7 @@ export function Settings() {
               <label className="settings-switch" style={styles.switch}>
                 <input
                   type="checkbox"
-                  checked={settings?.config.appearance.launch_at_login ?? false}
+                  checked={settings?.config.appearance.launch_at_login ?? true}
                   onChange={(e) => handleSettingChange('appearance.launch_at_login', e.target.checked)}
                 />
                 <span style={styles.slider}></span>
@@ -464,67 +481,147 @@ export function Settings() {
         </section>
 
         <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Data Directories</h2>
-          {settings && (
-            <>
-              <div style={styles.field}>
-                <label style={styles.label}>Notes Directory</label>
-                <p style={styles.pathValue}>{settings.paths.notes_dir}</p>
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Database Path</label>
-                <p style={styles.pathValue}>{settings.paths.db_path}</p>
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>Cache Directory</label>
-                <p style={styles.pathValue}>{settings.paths.cache_dir}</p>
-              </div>
-            </>
-          )}
-        </section>
-
-        <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Privacy Blocklist</h2>
           <p style={styles.description}>
             Block specific apps and websites from being captured.
             Use this to protect sensitive activities like banking, medical, or password managers.
           </p>
 
-          {/* Add new entry form */}
-          <div style={styles.blocklistForm}>
-            <select
-              value={newBlockType}
-              onChange={(e) => setNewBlockType(e.target.value as 'app' | 'domain')}
-              style={styles.select}
-            >
-              <option value="domain">Domain</option>
-              <option value="app">App</option>
-            </select>
-            <input
-              type="text"
-              value={newBlockPattern}
-              onChange={(e) => setNewBlockPattern(e.target.value)}
-              placeholder={newBlockType === 'domain' ? 'example.com' : 'com.example.app'}
-              style={styles.input}
-            />
-            <input
-              type="text"
-              value={newBlockName}
-              onChange={(e) => setNewBlockName(e.target.value)}
-              placeholder="Display name (optional)"
-              style={{ ...styles.input, flex: 0.7 }}
-            />
+          {/* Tab selector for Apps vs Domains */}
+          <div style={styles.tabContainer}>
             <button
-              onClick={handleAddBlocklistEntry}
-              disabled={!newBlockPattern.trim()}
               style={{
-                ...styles.saveButton,
-                ...(!newBlockPattern.trim() ? styles.saveButtonDisabled : {}),
+                ...styles.tab,
+                ...(newBlockType === 'app' ? styles.tabActive : {}),
               }}
+              onClick={() => setNewBlockType('app')}
             >
-              Add
+              Block Apps
+            </button>
+            <button
+              style={{
+                ...styles.tab,
+                ...(newBlockType === 'domain' ? styles.tabActive : {}),
+              }}
+              onClick={() => setNewBlockType('domain')}
+            >
+              Block Websites
             </button>
           </div>
+
+          {/* App picker */}
+          {newBlockType === 'app' && (
+            <div style={styles.blocklistAddSection}>
+              <button
+                onClick={() => setShowAppPicker(!showAppPicker)}
+                style={styles.appPickerButton}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add Application to Blocklist
+              </button>
+
+              {showAppPicker && (
+                <div style={styles.appPickerDropdown}>
+                  <input
+                    type="text"
+                    value={appSearchQuery}
+                    onChange={(e) => setAppSearchQuery(e.target.value)}
+                    placeholder="Search installed apps..."
+                    style={styles.appSearchInput}
+                    autoFocus
+                  />
+                  <div style={styles.appList}>
+                    {installedApps
+                      .filter(app =>
+                        app.name.toLowerCase().includes(appSearchQuery.toLowerCase()) ||
+                        app.bundleId.toLowerCase().includes(appSearchQuery.toLowerCase())
+                      )
+                      .slice(0, 20)
+                      .map((app) => {
+                        const isBlocked = blocklistEntries.some(
+                          (e) => e.block_type === 'app' && e.pattern === app.bundleId
+                        );
+                        return (
+                          <button
+                            key={app.bundleId}
+                            style={{
+                              ...styles.appItem,
+                              ...(isBlocked ? styles.appItemDisabled : {}),
+                            }}
+                            onClick={async () => {
+                              if (isBlocked) return;
+                              try {
+                                const result = await window.traceAPI.blocklist.addApp(
+                                  app.bundleId,
+                                  app.name
+                                );
+                                if (result.success) {
+                                  setMessage({ type: 'success', text: `Blocked ${app.name}` });
+                                  loadBlocklist();
+                                  setShowAppPicker(false);
+                                  setAppSearchQuery('');
+                                }
+                              } catch (err) {
+                                setMessage({ type: 'error', text: 'Failed to add app' });
+                              }
+                            }}
+                            disabled={isBlocked}
+                          >
+                            <span style={styles.appItemName}>{app.name}</span>
+                            <span style={styles.appItemBundleId}>{app.bundleId}</span>
+                            {isBlocked && <span style={styles.appItemBlocked}>Already blocked</span>}
+                          </button>
+                        );
+                      })}
+                    {installedApps.filter(app =>
+                      app.name.toLowerCase().includes(appSearchQuery.toLowerCase()) ||
+                      app.bundleId.toLowerCase().includes(appSearchQuery.toLowerCase())
+                    ).length === 0 && (
+                      <div style={styles.appListEmpty}>
+                        No apps found matching &quot;{appSearchQuery}&quot;
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Domain input */}
+          {newBlockType === 'domain' && (
+            <div style={styles.domainInputSection}>
+              <div style={styles.domainInputRow}>
+                <input
+                  type="text"
+                  value={newBlockPattern}
+                  onChange={(e) => setNewBlockPattern(e.target.value)}
+                  placeholder="Enter domain (e.g., bankofamerica.com)"
+                  style={styles.domainInput}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && newBlockPattern.trim()) {
+                      handleAddBlocklistEntry();
+                    }
+                  }}
+                />
+                <button
+                  onClick={handleAddBlocklistEntry}
+                  disabled={!newBlockPattern.trim()}
+                  style={{
+                    ...styles.addDomainButton,
+                    ...(!newBlockPattern.trim() ? styles.saveButtonDisabled : {}),
+                  }}
+                >
+                  Add Domain
+                </button>
+              </div>
+              <p style={styles.domainHint}>
+                Blocks all pages on this domain and its subdomains
+              </p>
+            </div>
+          )}
 
           {/* Initialize defaults button */}
           {blocklistEntries.length === 0 && (
@@ -532,7 +629,7 @@ export function Settings() {
               onClick={handleInitDefaults}
               style={styles.initDefaultsButton}
             >
-              Add Default Blocklist (Banking, Password Managers)
+              Add Recommended Defaults (Banking, Password Managers)
             </button>
           )}
 
@@ -759,15 +856,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'not-allowed',
     opacity: 0.5,
   },
-  pathValue: {
-    fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace',
-    fontSize: '0.85rem',
-    color: 'var(--text-secondary)',
-    backgroundColor: 'var(--bg-secondary)',
-    padding: '0.5rem 0.75rem',
-    borderRadius: '6px',
-    wordBreak: 'break-all',
-  },
   aboutText: {
     fontSize: '0.9rem',
     color: 'var(--text-secondary)',
@@ -824,21 +912,148 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-primary)',
   },
   // Blocklist styles
-  blocklistForm: {
+  tabContainer: {
     display: 'flex',
     gap: '0.5rem',
     marginBottom: '1rem',
-    flexWrap: 'wrap',
+  },
+  tab: {
+    flex: 1,
+    padding: '0.75rem 1rem',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  tabActive: {
+    backgroundColor: 'var(--accent)',
+    borderColor: 'var(--accent)',
+    color: 'white',
+  },
+  blocklistAddSection: {
+    marginBottom: '1rem',
+  },
+  appPickerButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    width: '100%',
+    padding: '0.875rem 1rem',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px dashed var(--border)',
+    borderRadius: '8px',
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  appPickerDropdown: {
+    marginTop: '0.5rem',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    overflow: 'hidden',
+  },
+  appSearchInput: {
+    width: '100%',
+    padding: '0.75rem 1rem',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderBottom: '1px solid var(--border)',
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    outline: 'none',
+  },
+  appList: {
+    maxHeight: '300px',
+    overflowY: 'auto',
+  },
+  appItem: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-start',
+    width: '100%',
+    padding: '0.75rem 1rem',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderBottom: '1px solid var(--border)',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+    transition: 'background-color 0.15s ease',
+  },
+  appItemDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+  },
+  appItemName: {
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'var(--text-primary)',
+  },
+  appItemBundleId: {
+    fontSize: '0.75rem',
+    color: 'var(--text-secondary)',
+    fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace',
+  },
+  appItemBlocked: {
+    fontSize: '0.75rem',
+    color: '#34c759',
+    marginTop: '0.25rem',
+  },
+  appListEmpty: {
+    padding: '1rem',
+    textAlign: 'center' as const,
+    color: 'var(--text-secondary)',
+    fontSize: '0.85rem',
+  },
+  domainInputSection: {
+    marginBottom: '1rem',
+  },
+  domainInputRow: {
+    display: 'flex',
+    gap: '0.5rem',
+  },
+  domainInput: {
+    flex: 1,
+    padding: '0.75rem 1rem',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    outline: 'none',
+  },
+  addDomainButton: {
+    padding: '0.75rem 1.25rem',
+    backgroundColor: 'var(--accent)',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'white',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  },
+  domainHint: {
+    fontSize: '0.8rem',
+    color: 'var(--text-secondary)',
+    marginTop: '0.5rem',
   },
   initDefaultsButton: {
     backgroundColor: 'transparent',
     border: '1px solid var(--border)',
     borderRadius: '8px',
-    padding: '0.625rem 1rem',
+    padding: '0.75rem 1rem',
     fontSize: '0.85rem',
     color: 'var(--text-secondary)',
     cursor: 'pointer',
     marginBottom: '1rem',
+    width: '100%',
+    textAlign: 'center' as const,
   },
   emptyState: {
     fontSize: '0.85rem',

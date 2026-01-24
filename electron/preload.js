@@ -431,6 +431,18 @@ contextBridge.exposeInMainWorld('traceAPI', {
     },
   },
 
+  // Shell methods
+  shell: {
+    // Open external URL
+    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  },
+
+  // Installed apps methods (macOS)
+  apps: {
+    // List installed applications
+    list: () => ipcRenderer.invoke('apps:list'),
+  },
+
   // Tray menu event listeners
   tray: {
     // Listen for open note from tray

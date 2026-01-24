@@ -180,7 +180,7 @@ export const SetupComplete: React.FC = () => {
         </svg>
       </div>
 
-      <h1 style={styles.title}>You're All Set!</h1>
+      <h1 style={styles.title}>You&apos;re All Set!</h1>
       <p style={styles.subtitle}>
         Trace is now running in the background,<br />
         capturing and organizing your digital activity.

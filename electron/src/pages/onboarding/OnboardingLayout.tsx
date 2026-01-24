@@ -19,7 +19,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   titlebar: {
     height: 38,
-    WebkitAppRegion: 'drag' as unknown as undefined,
     backgroundColor: 'transparent',
     flexShrink: 0,
   },
@@ -74,7 +73,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-    WebkitAppRegion: 'no-drag' as unknown as undefined,
   },
   childrenWrapper: {
     width: '100%',
@@ -109,6 +107,7 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
       {showBack && (
         <button
           style={styles.backButton}
+          className="no-drag"
           onClick={handleBack}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';

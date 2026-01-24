@@ -7,8 +7,8 @@ Settings are stored in a JSON file at ~/Library/Application Support/Trace/config
 Configuration schema:
     {
         "appearance": {
-            "show_in_dock": true,
-            "launch_at_login": false
+            "show_in_dock": false,
+            "launch_at_login": true
         },
         "capture": {
             "summarization_interval_minutes": 60,
@@ -46,8 +46,8 @@ CONFIG_PATH: Path = DATA_ROOT / "config.json"
 # Default configuration values
 DEFAULT_CONFIG: dict[str, Any] = {
     "appearance": {
-        "show_in_dock": True,
-        "launch_at_login": False,
+        "show_in_dock": False,  # Default: OFF (menu bar only)
+        "launch_at_login": True,  # Default: ON (start at login)
     },
     "capture": {
         "summarization_interval_minutes": 60,
