@@ -68,8 +68,10 @@ compression: normal
 extraResources:
   - from: ../LICENSE
     to: LICENSE
-  - from: python-dist
-    to: python-dist
+  # Python backend (bundled with PyInstaller)
+  # Path is relative to the electron directory where this config lives
+  - from: "./python-dist"
+    to: "python-dist"
     filter:
       - "**/*"
 

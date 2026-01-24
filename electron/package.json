@@ -48,7 +48,10 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        "dir"
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
       ],
       "hardenedRuntime": false,
       "entitlements": "entitlements.mac.plist",
@@ -67,6 +70,13 @@
       "main.js",
       "preload.js",
       "dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "python-dist",
+        "to": "python-dist",
+        "filter": ["**/*"]
+      }
     ]
   },
   "overrides": {
