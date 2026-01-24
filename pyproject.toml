@@ -53,6 +53,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     # YAML parsing
     "pyyaml>=6.0",
+    "mss>=10.1.0",
 ]
 
 [project.optional-dependencies]

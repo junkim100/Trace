@@ -78,11 +78,16 @@ def _get_frontmost_app_bundle() -> str | None:
         return None
 
     try:
+        import objc
         from AppKit import NSWorkspace
 
-        workspace = NSWorkspace.sharedWorkspace()
-        frontmost_app = workspace.frontmostApplication()
-        return frontmost_app.bundleIdentifier() if frontmost_app else None
+        # Use autorelease pool to ensure ObjC objects are released promptly
+        with objc.autorelease_pool():
+            workspace = NSWorkspace.sharedWorkspace()
+            frontmost_app = workspace.frontmostApplication()
+            bundle_id = frontmost_app.bundleIdentifier() if frontmost_app else None
+            # Convert to Python string to avoid holding ObjC reference
+            return str(bundle_id) if bundle_id else None
     except Exception:
         return None
 

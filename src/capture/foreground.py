@@ -41,19 +41,27 @@ def _get_frontmost_app_macos() -> tuple[str | None, str | None, int | None]:
         return None, None, None
 
     try:
+        import objc
         from AppKit import NSWorkspace
 
-        workspace = NSWorkspace.sharedWorkspace()
-        frontmost_app = workspace.frontmostApplication()
+        # Use autorelease pool to ensure ObjC objects are released promptly
+        with objc.autorelease_pool():
+            workspace = NSWorkspace.sharedWorkspace()
+            frontmost_app = workspace.frontmostApplication()
 
-        if frontmost_app is None:
-            return None, None, None
+            if frontmost_app is None:
+                return None, None, None
 
-        bundle_id = frontmost_app.bundleIdentifier()
-        app_name = frontmost_app.localizedName()
-        pid = frontmost_app.processIdentifier()
+            bundle_id = frontmost_app.bundleIdentifier()
+            app_name = frontmost_app.localizedName()
+            pid = frontmost_app.processIdentifier()
 
-        return bundle_id, app_name, pid
+            # Convert to Python strings to avoid holding ObjC references
+            bundle_id = str(bundle_id) if bundle_id else None
+            app_name = str(app_name) if app_name else None
+            pid = int(pid) if pid else None
+
+            return bundle_id, app_name, pid
 
     except ImportError:
         logger.error("AppKit not available")
@@ -83,6 +91,7 @@ def _get_focused_window_title_macos(pid: int | None) -> str | None:
         return None
 
     try:
+        import objc
         from Quartz import (
             CGWindowListCopyWindowInfo,
             kCGNullWindowID,
@@ -90,24 +99,31 @@ def _get_focused_window_title_macos(pid: int | None) -> str | None:
             kCGWindowListOptionOnScreenOnly,
         )
 
-        # Get all on-screen windows
-        options = kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements
-        window_list = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
+        # Use autorelease pool to ensure CF objects are released promptly
+        with objc.autorelease_pool():
+            # Get all on-screen windows
+            options = kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements
+            window_list = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
 
-        if window_list is None:
-            return None
+            if window_list is None:
+                return None
 
-        # Find the topmost window from the target process
-        for window in window_list:
-            window_pid = window.get("kCGWindowOwnerPID")
-            if window_pid == pid:
-                # Check if it's a regular window (layer 0 is normal windows)
-                layer = window.get("kCGWindowLayer", -1)
-                if layer == 0:
-                    title = window.get("kCGWindowName", "")
-                    return title if title else None
+            result = None
+            # Find the topmost window from the target process
+            for window in window_list:
+                window_pid = window.get("kCGWindowOwnerPID")
+                if window_pid == pid:
+                    # Check if it's a regular window (layer 0 is normal windows)
+                    layer = window.get("kCGWindowLayer", -1)
+                    if layer == 0:
+                        title = window.get("kCGWindowName", "")
+                        # Convert to Python string to avoid holding CF references
+                        result = str(title) if title else None
+                        break
 
-        return None
+            # Explicitly clear references before exiting pool
+            del window_list
+            return result
 
     except ImportError:
         logger.warning("Quartz framework not available for window title")
@@ -136,35 +152,43 @@ def _get_focused_window_title_accessibility(pid: int | None) -> str | None:
         return None
 
     try:
+        import objc
         from ApplicationServices import (
             AXUIElementCopyAttributeValue,
             AXUIElementCreateApplication,
             kAXErrorSuccess,
         )
 
-        # Create an accessibility element for the app
-        app_element = AXUIElementCreateApplication(pid)
+        # Use autorelease pool to ensure AX objects are released promptly
+        with objc.autorelease_pool():
+            # Create an accessibility element for the app
+            app_element = AXUIElementCreateApplication(pid)
 
-        # Get the focused window
-        error_code, focused_window = AXUIElementCopyAttributeValue(
-            app_element, "AXFocusedWindow", None
-        )
-
-        if error_code != kAXErrorSuccess or focused_window is None:
-            # Try getting the main window instead
+            # Get the focused window
             error_code, focused_window = AXUIElementCopyAttributeValue(
-                app_element, "AXMainWindow", None
+                app_element, "AXFocusedWindow", None
             )
+
             if error_code != kAXErrorSuccess or focused_window is None:
-                return None
+                # Try getting the main window instead
+                error_code, focused_window = AXUIElementCopyAttributeValue(
+                    app_element, "AXMainWindow", None
+                )
+                if error_code != kAXErrorSuccess or focused_window is None:
+                    return None
 
-        # Get the window title
-        error_code, title = AXUIElementCopyAttributeValue(focused_window, "AXTitle", None)
+            # Get the window title
+            error_code, title = AXUIElementCopyAttributeValue(focused_window, "AXTitle", None)
 
-        if error_code == kAXErrorSuccess and title:
-            return str(title)
+            result = None
+            if error_code == kAXErrorSuccess and title:
+                # Convert to Python string to avoid holding AX references
+                result = str(title)
 
-        return None
+            # Explicitly clear references
+            del focused_window
+            del app_element
+            return result
 
     except ImportError:
         logger.warning("ApplicationServices not available")
@@ -191,6 +215,7 @@ def _get_focused_monitor_macos(pid: int | None) -> int | None:
         return None
 
     try:
+        import objc
         from Quartz import (
             CGWindowListCopyWindowInfo,
             kCGNullWindowID,
@@ -198,30 +223,36 @@ def _get_focused_monitor_macos(pid: int | None) -> int | None:
             kCGWindowListOptionOnScreenOnly,
         )
 
-        # Get all on-screen windows
-        options = kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements
-        window_list = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
+        # Use autorelease pool to ensure CF objects are released promptly
+        with objc.autorelease_pool():
+            # Get all on-screen windows
+            options = kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements
+            window_list = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
 
-        if window_list is None:
-            return None
+            if window_list is None:
+                return None
 
-        # Find the frontmost window from the target process
-        for window in window_list:
-            window_pid = window.get("kCGWindowOwnerPID")
-            layer = window.get("kCGWindowLayer", -1)
+            result = None
+            # Find the frontmost window from the target process
+            for window in window_list:
+                window_pid = window.get("kCGWindowOwnerPID")
+                layer = window.get("kCGWindowLayer", -1)
 
-            if window_pid == pid and layer == 0:
-                # Get the window bounds
-                bounds = window.get("kCGWindowBounds")
-                if bounds:
-                    # Get the center point of the window
-                    center_x = bounds.get("X", 0) + bounds.get("Width", 0) / 2
-                    center_y = bounds.get("Y", 0) + bounds.get("Height", 0) / 2
+                if window_pid == pid and layer == 0:
+                    # Get the window bounds
+                    bounds = window.get("kCGWindowBounds")
+                    if bounds:
+                        # Get the center point of the window
+                        center_x = bounds.get("X", 0) + bounds.get("Width", 0) / 2
+                        center_y = bounds.get("Y", 0) + bounds.get("Height", 0) / 2
 
-                    # Find which display contains this point
-                    return _get_display_at_point(center_x, center_y)
+                        # Find which display contains this point
+                        result = _get_display_at_point(center_x, center_y)
+                        break
 
-        return None
+            # Explicitly clear reference
+            del window_list
+            return result
 
     except ImportError:
         return None

@@ -334,42 +334,21 @@ function createWindow() {
   });
 }
 
-// Check and request permissions on startup
-async function checkAndRequestPermissions() {
+// Check permissions on startup (silent check only - no dialogs)
+// The Permissions page in the React app handles the UI for requesting permissions
+function checkPermissionsStatus() {
   const screenStatus = systemPreferences.getMediaAccessStatus('screen');
   const accessibilityStatus = systemPreferences.isTrustedAccessibilityClient(false);
 
   console.log('Startup permission check - Screen:', screenStatus, 'Accessibility:', accessibilityStatus);
 
-  // Request accessibility permission if not granted (shows system prompt)
-  if (!accessibilityStatus) {
-    console.log('Requesting accessibility permission on startup...');
-    // This will show the macOS system prompt for accessibility
-    systemPreferences.isTrustedAccessibilityClient(true);
-  }
-
-  // For screen recording, we can't request programmatically - show a dialog
-  if (screenStatus !== 'granted') {
-    console.log('Screen recording not granted - prompting user');
-    const result = await dialog.showMessageBox({
-      type: 'info',
-      title: 'Screen Recording Permission Required',
-      message: 'Trace needs Screen Recording permission to capture screenshots of your activity.',
-      detail: 'Click "Open System Settings" to enable this permission, then restart Trace.',
-      buttons: ['Open System Settings', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-    });
-
-    if (result.response === 0) {
-      // User clicked "Open System Settings"
-      shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
-    }
-  }
+  // Don't show any dialogs here - let the Permissions page handle the UX
+  // This prevents duplicate popups (app dialog + system settings)
 
   return {
     screen_recording: screenStatus === 'granted',
     accessibility: accessibilityStatus,
+    all_granted: screenStatus === 'granted' && accessibilityStatus,
   };
 }
 
@@ -654,8 +633,9 @@ app.whenReady().then(async () => {
   // Register global shortcuts
   registerGlobalShortcuts();
 
-  // Check and request permissions on startup
-  const permissions = await checkAndRequestPermissions();
+  // Check permissions on startup (silent - no dialogs shown)
+  // The Permissions page handles the UX for requesting permissions
+  const permissions = checkPermissionsStatus();
   console.log('Startup permissions:', permissions);
 
   createWindow();

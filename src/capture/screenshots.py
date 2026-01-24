@@ -7,6 +7,7 @@ Screenshots are downscaled to a maximum resolution of 1080p to save storage.
 P3-01: Multi-monitor screenshot capture
 """
 
+import gc
 import logging
 import sys
 import uuid
@@ -51,96 +52,61 @@ class CapturedScreenshot:
     original_height: int
 
 
-def _get_monitors_macos() -> list[MonitorInfo]:
-    """Get information about all connected monitors on macOS."""
-    if sys.platform != "darwin":
-        return []
-
+def _get_monitors_mss() -> list[MonitorInfo]:
+    """Get information about all connected monitors using mss."""
     try:
-        from Quartz import (
-            CGDisplayBounds,
-            CGGetActiveDisplayList,
-            CGMainDisplayID,
-        )
+        import mss
 
-        max_displays = 16
-        error, active_displays, count = CGGetActiveDisplayList(max_displays, None, None)
-
-        if error != 0:
-            logger.error(f"CGGetActiveDisplayList returned error: {error}")
-            return []
-
-        if count == 0:
-            logger.warning("No displays found")
-            return []
-
-        main_display_id = CGMainDisplayID()
-        monitors = []
-
-        for i in range(count):
-            display_id = active_displays[i]
-            bounds = CGDisplayBounds(display_id)
-
-            monitors.append(
-                MonitorInfo(
-                    monitor_id=display_id,
-                    x=int(bounds.origin.x),
-                    y=int(bounds.origin.y),
-                    width=int(bounds.size.width),
-                    height=int(bounds.size.height),
-                    is_main=(display_id == main_display_id),
+        with mss.mss() as sct:
+            monitors = []
+            # mss.monitors[0] is "all monitors combined", skip it
+            # mss.monitors[1:] are individual monitors
+            for i, mon in enumerate(sct.monitors[1:], start=1):
+                monitors.append(
+                    MonitorInfo(
+                        monitor_id=i,  # Use 1-based index as ID
+                        x=mon["left"],
+                        y=mon["top"],
+                        width=mon["width"],
+                        height=mon["height"],
+                        is_main=(i == 1),  # First monitor is typically main
+                    )
                 )
-            )
+            return monitors
 
-        return monitors
     except ImportError:
-        logger.error("Quartz framework not available")
+        logger.error("mss library not available")
         return []
     except Exception as e:
         logger.error(f"Failed to get monitor list: {e}")
         return []
 
 
-def _capture_display_macos(display_id: int) -> Image.Image | None:
-    """Capture a single display on macOS."""
-    if sys.platform != "darwin":
-        return None
-
+def _capture_display_mss(monitor_index: int) -> Image.Image | None:
+    """Capture a display using mss (memory-safe, cross-platform)."""
     try:
-        from Quartz import (
-            CGDataProviderCopyData,
-            CGDisplayCreateImage,
-            CGImageGetBytesPerRow,
-            CGImageGetDataProvider,
-            CGImageGetHeight,
-            CGImageGetWidth,
-        )
+        import mss
 
-        # Capture the display
-        cg_image = CGDisplayCreateImage(display_id)
-        if cg_image is None:
-            logger.warning(f"Failed to capture display {display_id}")
-            return None
+        with mss.mss() as sct:
+            # mss uses 1-based indexing, 0 is "all monitors"
+            monitors = sct.monitors
+            if monitor_index < 0 or monitor_index >= len(monitors):
+                logger.warning(f"Invalid monitor index {monitor_index}")
+                return None
 
-        # Get image dimensions using functions
-        width = CGImageGetWidth(cg_image)
-        height = CGImageGetHeight(cg_image)
-        bytes_per_row = CGImageGetBytesPerRow(cg_image)
+            # Capture the monitor
+            screenshot = sct.grab(monitors[monitor_index])
 
-        # Get raw pixel data
-        provider = CGImageGetDataProvider(cg_image)
-        data = CGDataProviderCopyData(provider)
+            # Convert to PIL Image
+            image = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
 
-        # Convert to PIL Image
-        # CGImage uses BGRA format
-        image = Image.frombytes("RGBA", (width, height), bytes(data), "raw", "BGRA", bytes_per_row)
-        return image
+            return image
 
     except ImportError:
-        logger.error("Quartz framework not available")
+        logger.error("mss library not available")
         return None
     except Exception as e:
-        logger.error(f"Failed to capture display {display_id}: {e}")
+        logger.error(f"Failed to capture display {monitor_index}: {e}")
         return None
 
 
@@ -192,7 +158,7 @@ class MultiMonitorCapture:
 
     def refresh_monitors(self) -> list[MonitorInfo]:
         """Refresh the list of connected monitors."""
-        self._monitors = _get_monitors_macos()
+        self._monitors = _get_monitors_mss()
         self._last_refresh = datetime.now()
         logger.debug(f"Refreshed monitor list: {len(self._monitors)} monitors")
         return self._monitors
@@ -235,13 +201,17 @@ class MultiMonitorCapture:
             except Exception as e:
                 logger.error(f"Failed to capture monitor {monitor.monitor_id}: {e}")
 
+        # CRITICAL: Force garbage collection after each capture cycle
+        # PyObjC objects (CGImage, CFData) need help being released promptly
+        gc.collect()
+
         return results
 
     def _capture_monitor(
         self, monitor: MonitorInfo, timestamp: datetime, output_dir: Path
     ) -> CapturedScreenshot | None:
         """Capture a single monitor and save to disk."""
-        image = _capture_display_macos(monitor.monitor_id)
+        image = _capture_display_mss(monitor.monitor_id)
         if image is None:
             return None
 

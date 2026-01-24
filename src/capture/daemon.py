@@ -225,31 +225,59 @@ class CaptureDaemon:
 
     def _run_loop(self) -> None:
         """Main capture loop."""
+        import gc
+
+        # Import objc for autorelease pool management
+        try:
+            import objc
+
+            has_objc = True
+        except ImportError:
+            has_objc = False
+
         logger.info(f"Capture loop started (interval: {self.capture_interval}s)")
 
         while self._running and not self._shutdown_event.is_set():
             loop_start = time.time()
 
-            try:
-                snapshot = self._capture_tick()
-                self._stats.captures_total += 1
+            # CRITICAL: Wrap entire tick in autorelease pool
+            # This ensures ALL PyObjC objects created during capture are
+            # released immediately when the pool drains, not at some
+            # indeterminate future time. Essential for long-running apps.
+            if has_objc:
+                with objc.autorelease_pool():
+                    self._execute_tick()
+            else:
+                self._execute_tick()
 
-                # Notify callbacks
-                for callback in self._callbacks:
-                    try:
-                        callback(snapshot)
-                    except Exception as e:
-                        logger.error(f"Callback error: {e}")
-
-            except Exception as e:
-                logger.error(f"Capture error: {e}")
-                self._stats.errors += 1
+            # Force immediate garbage collection after pool drains
+            gc.collect()
 
             # Sleep for remaining interval
             elapsed = time.time() - loop_start
             sleep_time = max(0, self.capture_interval - elapsed)
             if sleep_time > 0:
                 self._shutdown_event.wait(timeout=sleep_time)
+
+    def _execute_tick(self) -> None:
+        """Execute a single capture tick within autorelease pool."""
+        try:
+            snapshot = self._capture_tick()
+            self._stats.captures_total += 1
+
+            # Notify callbacks
+            for callback in self._callbacks:
+                try:
+                    callback(snapshot)
+                except Exception as e:
+                    logger.error(f"Callback error: {e}")
+
+            # Explicitly clear reference to snapshot to help GC
+            del snapshot
+
+        except Exception as e:
+            logger.error(f"Capture error: {e}")
+            self._stats.errors += 1
 
     def _capture_tick(self) -> CaptureSnapshot:
         """Execute a single capture tick."""
