@@ -8,13 +8,30 @@ Migrations are stored as numbered SQL files in the migrations/ directory.
 import logging
 import re
 import sqlite3
+import sys
 from pathlib import Path
 
 from src.core.paths import DB_PATH
 
 logger = logging.getLogger(__name__)
 
-MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+
+def _get_migrations_dir() -> Path:
+    """
+    Get the migrations directory, handling both development and PyInstaller bundled modes.
+
+    In development: src/db/migrations/
+    In PyInstaller bundle: _MEIPASS/src/db/migrations/
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        # Running as PyInstaller bundle
+        return Path(sys._MEIPASS) / "src" / "db" / "migrations"
+    else:
+        # Running in development
+        return Path(__file__).parent / "migrations"
+
+
+MIGRATIONS_DIR = _get_migrations_dir()
 DEFAULT_DB_PATH = DB_PATH
 
 

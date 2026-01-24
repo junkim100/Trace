@@ -39,6 +39,12 @@ datas = []
 if sqlite_vec_path:
     datas.append((sqlite_vec_path, 'sqlite_vec'))
 
+# Include database migrations SQL files
+migrations_dir = project_root / 'src' / 'db' / 'migrations'
+if migrations_dir.exists():
+    for sql_file in migrations_dir.glob('*.sql'):
+        datas.append((str(sql_file), 'src/db/migrations'))
+
 # Hidden imports for PyObjC frameworks used by the app
 hiddenimports = [
     # PyObjC core
