@@ -62,6 +62,35 @@ body {
   }
 }
 
+/* Fade in animation for onboarding */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Slide in animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Onboarding page transition */
+.onboarding-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { OnboardingLayout } from '../onboarding/OnboardingLayout';
 import type {
   AllPermissionsState,
   PermissionType,
@@ -8,12 +9,38 @@ import type {
   PermissionStatusType,
 } from '../../types/trace-api';
 
+// Permission icons
+const PermissionIcons: Record<PermissionType, JSX.Element> = {
+  screen_recording: (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" strokeWidth="2">
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  ),
+  accessibility: (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2">
+      <circle cx="12" cy="4" r="2" />
+      <path d="M12 6v6" />
+      <path d="M8 10l4 4 4-4" />
+      <path d="M6 20l6-6 6 6" />
+    </svg>
+  ),
+  location: (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="2">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  ),
+};
+
 interface PermissionCardProps {
   permission: PermissionState;
   instructions: PermissionInstructions | null;
   onOpenSettings: () => void;
   onRequest?: () => void;
   isLoading: boolean;
+  icon: JSX.Element;
 }
 
 function PermissionCard({
@@ -22,6 +49,7 @@ function PermissionCard({
   onOpenSettings,
   onRequest,
   isLoading,
+  icon,
 }: PermissionCardProps) {
   const statusColors: Record<PermissionStatusType, string> = {
     granted: '#34c759',
@@ -44,10 +72,15 @@ function PermissionCard({
     <div style={styles.permissionCard}>
       <div style={styles.cardHeader}>
         <div style={styles.titleRow}>
-          <h3 style={styles.permissionTitle}>{instructions?.title || permission.permission}</h3>
-          {permission.required && (
-            <span style={styles.requiredBadge}>Required</span>
-          )}
+          <div style={styles.iconContainer}>{icon}</div>
+          <div>
+            <h3 style={styles.permissionTitle}>{instructions?.title || permission.permission}</h3>
+            {permission.required ? (
+              <span style={styles.requiredBadge}>Required</span>
+            ) : (
+              <span style={styles.optionalBadge}>Optional</span>
+            )}
+          </div>
         </div>
         <div style={{ ...styles.statusBadge, backgroundColor: statusColor }}>
           {statusLabel}
@@ -60,7 +93,7 @@ function PermissionCard({
 
       {permission.status !== 'granted' && instructions && (
         <div style={styles.stepsContainer}>
-          <h4 style={styles.stepsTitle}>Steps to enable:</h4>
+          <h4 style={styles.stepsTitle}>How to enable:</h4>
           <ol style={styles.stepsList}>
             {instructions.steps.map((step, index) => (
               <li key={index} style={styles.step}>{step}</li>
@@ -92,7 +125,10 @@ function PermissionCard({
 
       {permission.status === 'granted' && (
         <div style={styles.grantedMessage}>
-          <span style={styles.checkmark}>&#10003;</span> Permission granted
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34c759" strokeWidth="3">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          Permission granted
         </div>
       )}
 
@@ -240,238 +276,263 @@ function Permissions() {
   };
 
   const handleContinue = () => {
-    // Navigate to chat page using React Router
-    navigate('/chat');
+    // Navigate to API key setup
+    navigate('/onboarding/api-key');
   };
+
+  const handleBack = () => {
+    navigate('/onboarding/welcome');
+  };
+
+  // Check if required permissions are granted (screen_recording and accessibility)
+  const requiredGranted = permissionsState?.screen_recording.status === 'granted' &&
+                          permissionsState?.accessibility.status === 'granted';
 
   if (!window.traceAPI) {
     return (
-      <div style={styles.container}>
-        <div style={styles.content}>
-          <h1 style={styles.title}>Permissions</h1>
-          <p style={styles.subtitle}>Not running in Electron</p>
-        </div>
-      </div>
+      <OnboardingLayout currentStep={2} totalSteps={4}>
+        <h1 style={styles.title}>Permissions</h1>
+        <p style={styles.subtitle}>Not running in Electron</p>
+      </OnboardingLayout>
     );
   }
 
   if (!pythonReady) {
     return (
-      <div style={styles.container}>
-        <div style={styles.content}>
-          <h1 style={styles.title}>Permissions</h1>
-          <p style={styles.subtitle}>Connecting to backend...</p>
+      <OnboardingLayout currentStep={2} totalSteps={4}>
+        <div style={styles.loadingContainer}>
+          <div style={styles.spinner} />
+          <p style={styles.loadingText}>Connecting to backend...</p>
         </div>
-      </div>
+      </OnboardingLayout>
     );
   }
 
   return (
-    <div style={styles.container}>
-      <div className="titlebar" />
-      <div style={styles.content}>
-        <h1 style={styles.title}>Permissions Required</h1>
-        <p style={styles.subtitle}>
-          Trace needs some permissions to capture your digital activity.
-        </p>
+    <OnboardingLayout currentStep={2} totalSteps={4} showBack onBack={handleBack}>
+      <h1 style={styles.title}>Grant Permissions</h1>
+      <p style={styles.subtitle}>
+        Trace needs these permissions to capture your digital activity.
+      </p>
 
-
-        {error && (
-          <div style={styles.errorCard}>
-            <p style={styles.errorText}>{error}</p>
-          </div>
-        )}
-
-        <div style={styles.permissionsList}>
-          {permissionsState && (
-            <>
-              <PermissionCard
-                permission={permissionsState.screen_recording}
-                instructions={instructions.screen_recording}
-                onOpenSettings={() => handleOpenSettings('screen_recording')}
-                isLoading={isLoading}
-              />
-
-              <PermissionCard
-                permission={permissionsState.accessibility}
-                instructions={instructions.accessibility}
-                onOpenSettings={() => handleOpenSettings('accessibility')}
-                onRequest={handleRequestAccessibility}
-                isLoading={isLoading}
-              />
-
-              <PermissionCard
-                permission={permissionsState.location}
-                instructions={instructions.location}
-                onOpenSettings={() => handleOpenSettings('location')}
-                onRequest={handleRequestLocation}
-                isLoading={isLoading}
-              />
-            </>
-          )}
+      {error && (
+        <div style={styles.errorCard}>
+          <p style={styles.errorText}>{error}</p>
         </div>
+      )}
 
-        <div style={styles.footer}>
-          <button
-            style={{
-              ...styles.continueButton,
-              opacity: permissionsState?.all_granted ? 1 : 0.5,
-            }}
-            onClick={handleContinue}
-            disabled={!permissionsState?.all_granted}
-          >
-            {permissionsState?.all_granted ? 'Continue to Trace' : 'Grant Required Permissions'}
-          </button>
-          <div style={styles.pollingInfo}>
-            {isActivelyWaiting && !permissionsState?.all_granted && (
-              <span style={styles.pollingIndicator}>
-                <span style={styles.pollingDot} />
-                Checking for permission changes...
-              </span>
-            )}
-            <button
-              style={styles.refreshButton}
-              onClick={() => checkPermissions()}
-              disabled={isLoading}
-            >
-              {isLoading ? 'Checking...' : 'Refresh Status'}
-            </button>
-          </div>
-        </div>
+      <div style={styles.permissionsList}>
+        {permissionsState && (
+          <>
+            <PermissionCard
+              permission={permissionsState.screen_recording}
+              instructions={instructions.screen_recording}
+              onOpenSettings={() => handleOpenSettings('screen_recording')}
+              isLoading={isLoading}
+              icon={PermissionIcons.screen_recording}
+            />
 
-        {permissionsState?.requires_restart && (
-          <p style={styles.restartNote}>
-            Some permissions may require restarting Trace to take effect.
-          </p>
+            <PermissionCard
+              permission={permissionsState.accessibility}
+              instructions={instructions.accessibility}
+              onOpenSettings={() => handleOpenSettings('accessibility')}
+              onRequest={handleRequestAccessibility}
+              isLoading={isLoading}
+              icon={PermissionIcons.accessibility}
+            />
+
+            <PermissionCard
+              permission={permissionsState.location}
+              instructions={instructions.location}
+              onOpenSettings={() => handleOpenSettings('location')}
+              onRequest={handleRequestLocation}
+              isLoading={isLoading}
+              icon={PermissionIcons.location}
+            />
+          </>
         )}
       </div>
-    </div>
+
+      <div style={styles.footer}>
+        <button
+          style={{
+            ...styles.continueButton,
+            opacity: requiredGranted ? 1 : 0.5,
+            cursor: requiredGranted ? 'pointer' : 'not-allowed',
+          }}
+          onClick={handleContinue}
+          disabled={!requiredGranted}
+        >
+          {requiredGranted ? 'Next' : 'Grant Required Permissions'}
+        </button>
+
+        {isActivelyWaiting && !requiredGranted && (
+          <div style={styles.pollingIndicator}>
+            <span style={styles.pollingDot} />
+            Checking for permission changes...
+          </div>
+        )}
+      </div>
+
+      {permissionsState?.requires_restart && (
+        <p style={styles.restartNote}>
+          Some permissions may require restarting Trace to take effect.
+        </p>
+      )}
+    </OnboardingLayout>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    minHeight: '100vh',
-    backgroundColor: '#1a1a1a',
-  },
-  content: {
-    flex: 1,
-    padding: '2rem',
-    maxWidth: '800px',
-    margin: '0 auto',
-    width: '100%',
-  },
   title: {
-    fontSize: '2rem',
+    fontSize: 28,
     fontWeight: 700,
-    marginBottom: '0.5rem',
+    marginBottom: 8,
     background: 'linear-gradient(135deg, #007aff, #00d4ff)',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: '1rem',
-    color: '#a0a0a0',
-    marginBottom: '2rem',
+    fontSize: 16,
+    color: 'var(--text-secondary)',
+    marginBottom: 32,
     textAlign: 'center',
+  },
+  loadingContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 16,
+  },
+  spinner: {
+    width: 32,
+    height: 32,
+    border: '3px solid var(--border)',
+    borderTopColor: 'var(--accent)',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  },
+  loadingText: {
+    color: 'var(--text-secondary)',
+    fontSize: 14,
   },
   permissionsList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '1rem',
+    gap: 16,
+    width: '100%',
+    marginBottom: 24,
   },
   permissionCard: {
-    background: '#2a2a2a',
-    borderRadius: '12px',
-    padding: '1.5rem',
-    border: '1px solid #3a3a3a',
+    background: 'var(--bg-secondary)',
+    borderRadius: 12,
+    padding: 20,
+    border: '1px solid var(--border)',
+    transition: 'all 0.2s ease',
   },
   cardHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: '0.75rem',
+    marginBottom: 12,
   },
   titleRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: 12,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+    borderRadius: 10,
+    flexShrink: 0,
   },
   permissionTitle: {
-    fontSize: '1.25rem',
+    fontSize: 16,
     fontWeight: 600,
-    color: '#fff',
+    color: 'var(--text-primary)',
     margin: 0,
+    marginBottom: 4,
   },
   requiredBadge: {
-    fontSize: '0.75rem',
+    fontSize: 11,
     color: '#ff9500',
-    padding: '0.125rem 0.5rem',
-    borderRadius: '4px',
+    padding: '2px 8px',
+    borderRadius: 4,
     border: '1px solid #ff9500',
+    fontWeight: 500,
+  },
+  optionalBadge: {
+    fontSize: 11,
+    color: 'var(--text-secondary)',
+    padding: '2px 8px',
+    borderRadius: 4,
+    border: '1px solid var(--border)',
+    fontWeight: 500,
   },
   statusBadge: {
-    fontSize: '0.75rem',
+    fontSize: 12,
     color: '#fff',
-    padding: '0.25rem 0.75rem',
-    borderRadius: '12px',
+    padding: '4px 12px',
+    borderRadius: 12,
     fontWeight: 500,
   },
   description: {
-    fontSize: '0.875rem',
-    color: '#a0a0a0',
-    marginBottom: '1rem',
+    fontSize: 14,
+    color: 'var(--text-secondary)',
+    marginBottom: 16,
     lineHeight: 1.5,
   },
   stepsContainer: {
-    backgroundColor: '#222',
-    borderRadius: '8px',
-    padding: '1rem',
-    marginBottom: '1rem',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 16,
   },
   stepsTitle: {
-    fontSize: '0.875rem',
+    fontSize: 13,
     fontWeight: 600,
-    color: '#ccc',
-    margin: '0 0 0.5rem 0',
+    color: 'var(--text-secondary)',
+    margin: '0 0 8px 0',
   },
   stepsList: {
     margin: 0,
-    paddingLeft: '1.25rem',
+    paddingLeft: 20,
   },
   step: {
-    fontSize: '0.875rem',
-    color: '#999',
-    marginBottom: '0.25rem',
-    lineHeight: 1.4,
+    fontSize: 13,
+    color: 'var(--text-secondary)',
+    marginBottom: 4,
+    lineHeight: 1.5,
   },
   buttonRow: {
     display: 'flex',
-    gap: '0.75rem',
+    gap: 12,
     flexWrap: 'wrap',
   },
   primaryButton: {
-    backgroundColor: '#007aff',
+    backgroundColor: 'var(--accent)',
     color: '#fff',
     border: 'none',
-    borderRadius: '8px',
-    padding: '0.5rem 1rem',
-    fontSize: '0.875rem',
+    borderRadius: 8,
+    padding: '10px 16px',
+    fontSize: 14,
     fontWeight: 500,
     cursor: 'pointer',
-    transition: 'background-color 0.2s',
+    transition: 'all 0.2s',
   },
   secondaryButton: {
     backgroundColor: 'transparent',
-    color: '#007aff',
-    border: '1px solid #007aff',
-    borderRadius: '8px',
-    padding: '0.5rem 1rem',
-    fontSize: '0.875rem',
+    color: 'var(--accent)',
+    border: '1px solid var(--accent)',
+    borderRadius: 8,
+    padding: '10px 16px',
+    fontSize: 14,
     fontWeight: 500,
     cursor: 'pointer',
     transition: 'all 0.2s',
@@ -479,97 +540,68 @@ const styles: Record<string, React.CSSProperties> = {
   grantedMessage: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
+    gap: 8,
     color: '#34c759',
-    fontSize: '0.875rem',
+    fontSize: 14,
     fontWeight: 500,
   },
-  checkmark: {
-    fontSize: '1rem',
-  },
   restartWarning: {
-    fontSize: '0.75rem',
+    fontSize: 12,
     color: '#ff9500',
-    marginTop: '0.75rem',
+    marginTop: 12,
     marginBottom: 0,
   },
   footer: {
-    marginTop: '2rem',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '1rem',
+    gap: 16,
+    width: '100%',
   },
   continueButton: {
-    backgroundColor: '#34c759',
+    backgroundColor: 'var(--accent)',
     color: '#fff',
     border: 'none',
-    borderRadius: '12px',
-    padding: '1rem 2rem',
-    fontSize: '1rem',
+    borderRadius: 10,
+    padding: '14px 48px',
+    fontSize: 16,
     fontWeight: 600,
     cursor: 'pointer',
     transition: 'all 0.2s',
-    width: '100%',
-    maxWidth: '300px',
-  },
-  pollingInfo: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '0.5rem',
+    boxShadow: '0 4px 12px rgba(0, 122, 255, 0.3)',
   },
   pollingIndicator: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.5rem',
-    fontSize: '0.75rem',
+    gap: 8,
+    fontSize: 13,
     color: '#00d4ff',
   },
   pollingDot: {
-    width: '8px',
-    height: '8px',
+    width: 8,
+    height: 8,
     borderRadius: '50%',
     backgroundColor: '#00d4ff',
     animation: 'pulse 1s ease-in-out infinite',
   },
-  refreshButton: {
-    backgroundColor: 'transparent',
-    color: '#007aff',
-    border: '1px solid #007aff',
-    borderRadius: '8px',
-    padding: '0.5rem 1rem',
-    fontSize: '0.875rem',
-    fontWeight: 500,
-    cursor: 'pointer',
-  },
   restartNote: {
-    fontSize: '0.75rem',
+    fontSize: 12,
     color: '#ff9500',
     textAlign: 'center',
-    marginTop: '1rem',
+    marginTop: 16,
   },
   errorCard: {
-    background: '#3a2020',
-    borderRadius: '12px',
-    padding: '1rem',
-    border: '1px solid #5a3030',
-    marginBottom: '1rem',
+    background: 'rgba(255, 59, 48, 0.1)',
+    borderRadius: 12,
+    padding: 16,
+    border: '1px solid rgba(255, 59, 48, 0.3)',
+    marginBottom: 16,
+    width: '100%',
   },
   errorText: {
     color: '#ff6b6b',
-    fontSize: '0.875rem',
+    fontSize: 14,
     margin: 0,
-  },
-  devNote: {
-    backgroundColor: '#2a2a3a',
-    borderRadius: '8px',
-    padding: '1rem',
-    marginBottom: '1.5rem',
-    fontSize: '0.875rem',
-    color: '#a0a0c0',
-    lineHeight: 1.5,
-    border: '1px solid #3a3a4a',
   },
 };
 

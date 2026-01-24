@@ -7,6 +7,9 @@ import Settings from './pages/Settings';
 import Permissions from './pages/permissions';
 import Graph from './pages/Graph';
 import Dashboard from './pages/Dashboard';
+import Welcome from './pages/onboarding/Welcome';
+import ApiKey from './pages/onboarding/ApiKey';
+import SetupComplete from './pages/onboarding/SetupComplete';
 
 // Component to handle tray navigation events
 function TrayNavigationHandler() {
@@ -44,6 +47,10 @@ function App() {
           <Route path="/permissions" element={<Permissions />} />
           <Route path="/graph" element={<Graph />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          {/* Onboarding routes */}
+          <Route path="/onboarding/welcome" element={<Welcome />} />
+          <Route path="/onboarding/api-key" element={<ApiKey />} />
+          <Route path="/onboarding/complete" element={<SetupComplete />} />
         </Routes>
       </HashRouter>
     </ErrorBoundary>
