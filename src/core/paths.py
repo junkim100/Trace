@@ -164,6 +164,122 @@ def get_daily_cache_dirs(dt: datetime | date | None = None) -> dict[str, Path]:
     }
 
 
+def get_hourly_screenshot_dir(dt: datetime | None = None) -> Path:
+    """
+    Get the screenshot directory path for a specific hour.
+
+    Screenshots are organized by date and hour (YYYYMMDD/HH) to enable
+    cleanup after each hourly note is created.
+
+    Args:
+        dt: The datetime. Defaults to now.
+
+    Returns:
+        Path to the hour-specific screenshot directory
+    """
+    if dt is None:
+        dt = datetime.now()
+
+    date_str = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}"
+    hour_str = f"{dt.hour:02d}"
+
+    return SCREENSHOTS_CACHE_DIR / date_str / hour_str
+
+
+def ensure_hourly_screenshot_dir(dt: datetime | None = None) -> Path:
+    """
+    Ensure the screenshot directory for a specific hour exists.
+
+    Args:
+        dt: The datetime. Defaults to now.
+
+    Returns:
+        Path to the hour-specific screenshot directory
+    """
+    dir_path = get_hourly_screenshot_dir(dt)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    logger.debug(f"Ensured hourly screenshot directory exists: {dir_path}")
+    return dir_path
+
+
+def delete_hourly_screenshot_dir(dt: datetime) -> bool:
+    """
+    Delete the screenshot directory for a specific hour.
+
+    This should be called after successfully creating the hourly note.
+
+    Args:
+        dt: The datetime for the hour to clean up
+
+    Returns:
+        True if deleted successfully, False otherwise
+    """
+    dir_path = get_hourly_screenshot_dir(dt)
+
+    if not dir_path.exists():
+        logger.debug(f"Screenshot directory does not exist: {dir_path}")
+        return True
+
+    try:
+        shutil.rmtree(dir_path)
+        logger.info(f"Deleted hourly screenshot directory: {dir_path}")
+
+        # Check if the parent date directory is now empty, and delete it too
+        date_dir = dir_path.parent
+        if date_dir.exists() and not any(date_dir.iterdir()):
+            date_dir.rmdir()
+            logger.info(f"Deleted empty date directory: {date_dir}")
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to delete screenshot directory {dir_path}: {e}")
+        return False
+
+
+def get_all_screenshot_hours() -> list[datetime]:
+    """
+    Get all hours that have screenshot directories.
+
+    Returns:
+        List of datetime objects representing hours with screenshots
+    """
+    hours = []
+
+    if not SCREENSHOTS_CACHE_DIR.exists():
+        return hours
+
+    # Iterate through date directories (YYYYMMDD)
+    for date_dir in sorted(SCREENSHOTS_CACHE_DIR.iterdir()):
+        if not date_dir.is_dir():
+            continue
+
+        date_str = date_dir.name
+        if len(date_str) != 8 or not date_str.isdigit():
+            continue
+
+        # Check for hour subdirectories
+        for hour_dir in sorted(date_dir.iterdir()):
+            if not hour_dir.is_dir():
+                continue
+
+            hour_str = hour_dir.name
+            if len(hour_str) != 2 or not hour_str.isdigit():
+                # Legacy: if it's not an hour dir, it might be old format files
+                continue
+
+            try:
+                year = int(date_str[:4])
+                month = int(date_str[4:6])
+                day = int(date_str[6:8])
+                hour = int(hour_str)
+                dt = datetime(year, month, day, hour)
+                hours.append(dt)
+            except ValueError:
+                continue
+
+    return hours
+
+
 def ensure_daily_cache_dirs(dt: datetime | date | None = None) -> dict[str, Path]:
     """
     Ensure the cache directories for a specific date exist.

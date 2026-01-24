@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from src.core.paths import DB_PATH
+from src.core.paths import DB_PATH, get_all_screenshot_hours
 from src.db.migrations import get_connection
 from src.platform.notifications import send_backfill_notification, send_error_notification
 from src.summarize.summarizer import HourlySummarizer, SummarizationResult
@@ -73,8 +73,10 @@ class BackfillDetector:
         """
         Find ALL hours with activity but no notes.
 
-        Scans the entire database for hours that have screenshots/events
-        but no corresponding hourly note.
+        Scans both the database and screenshot directories for hours that have
+        activity but no corresponding hourly note. This ensures we catch:
+        1. Hours with screenshots/events in the database
+        2. Hours with screenshot directories on disk (e.g., after restart before DB sync)
 
         Returns:
             List of hour start times that need backfilling (oldest first)
@@ -87,7 +89,7 @@ class BackfillDetector:
         try:
             cursor = conn.cursor()
 
-            # Find all distinct hours with screenshots
+            # Find all distinct hours with screenshots in database
             cursor.execute(
                 """
                 SELECT DISTINCT strftime('%Y-%m-%dT%H:00:00', ts) as hour_start
@@ -99,7 +101,7 @@ class BackfillDetector:
             )
             hours_with_screenshots = {row[0] for row in cursor.fetchall()}
 
-            # Find all distinct hours with events
+            # Find all distinct hours with events in database
             cursor.execute(
                 """
                 SELECT DISTINCT strftime('%Y-%m-%dT%H:00:00', start_ts) as hour_start
@@ -111,10 +113,25 @@ class BackfillDetector:
             )
             hours_with_events = {row[0] for row in cursor.fetchall()}
 
-            # Combine all hours with activity
-            all_activity_hours = hours_with_screenshots | hours_with_events
+            # Also check for screenshot directories on disk (hourly structure)
+            # This catches cases where screenshots exist but may not be in DB yet
+            hours_with_dirs = set()
+            try:
+                for hour_dt in get_all_screenshot_hours():
+                    if hour_dt < current_hour:
+                        hours_with_dirs.add(hour_dt.isoformat())
+            except Exception as e:
+                logger.warning(f"Error scanning screenshot directories: {e}")
 
-            logger.debug(f"Found {len(all_activity_hours)} hours with activity")
+            # Combine all sources of activity hours
+            all_activity_hours = hours_with_screenshots | hours_with_events | hours_with_dirs
+
+            logger.debug(
+                f"Found {len(all_activity_hours)} hours with activity "
+                f"(db_screenshots: {len(hours_with_screenshots)}, "
+                f"db_events: {len(hours_with_events)}, "
+                f"disk_dirs: {len(hours_with_dirs)})"
+            )
 
             # Check each hour for missing notes
             for hour_str in sorted(all_activity_hours):

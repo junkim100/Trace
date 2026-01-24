@@ -155,11 +155,19 @@ class TraceCLI:
         """Start all background services (capture + hourly + daily schedulers).
 
         This is the main command to run Trace in the background.
+        Includes:
+        - Capture daemon for screenshots and activity
+        - Hourly summarization scheduler
+        - Daily revision scheduler
+        - Sleep/wake detection for immediate backfill
+        - Startup backfill for any missing hours
         """
         from src.capture.daemon import CaptureDaemon
         from src.core.paths import DB_PATH, ensure_data_directories
+        from src.jobs.backfill import BackfillDetector
         from src.jobs.daily import DailyJobScheduler
         from src.jobs.hourly import HourlyJobScheduler
+        from src.platform.sleep_wake import SleepWakeDetector
 
         logging.basicConfig(
             level=logging.INFO,
@@ -180,9 +188,36 @@ class TraceCLI:
         hourly_scheduler = HourlyJobScheduler(db_path=DB_PATH, api_key=api_key)
         daily_scheduler = DailyJobScheduler(db_path=DB_PATH, api_key=api_key)
 
+        # Initialize backfill detector
+        backfill_detector = BackfillDetector(db_path=DB_PATH, api_key=api_key)
+
+        # Initialize sleep/wake detector for immediate recovery
+        sleep_wake_detector = SleepWakeDetector()
+
+        def on_wake(wake_time, sleep_duration):
+            """Handle system wake - trigger immediate backfill."""
+            logger.info(
+                f"System woke up after {sleep_duration:.1f}s sleep. Checking for missing notes..."
+            )
+            # Run backfill in a separate thread to not block the wake handler
+            import threading
+
+            def do_backfill():
+                try:
+                    result = backfill_detector.check_and_backfill(notify=True)
+                    if result.hours_backfilled > 0:
+                        logger.info(f"Wake recovery: backfilled {result.hours_backfilled} hours")
+                except Exception as e:
+                    logger.error(f"Wake recovery backfill failed: {e}")
+
+            threading.Thread(target=do_backfill, daemon=True).start()
+
+        sleep_wake_detector.add_wake_callback(on_wake)
+
         # Handle graceful shutdown
         def signal_handler(sig, frame):
             logger.info("Shutting down all services...")
+            sleep_wake_detector.stop()
             capture_daemon.stop()
             hourly_scheduler.stop()
             daily_scheduler.stop()
@@ -192,11 +227,27 @@ class TraceCLI:
         signal.signal(signal.SIGTERM, signal_handler)
 
         logger.info("Starting Trace services...")
+
+        # Start all services
         capture_daemon.start()
         hourly_scheduler.start()
         daily_scheduler.start()
+        sleep_wake_detector.start()
 
         logger.info("All services running. Press Ctrl+C to stop.")
+
+        # Run startup backfill to catch any missing hours from before restart
+        logger.info("Running startup backfill check...")
+        try:
+            startup_result = backfill_detector.check_and_backfill(notify=False)
+            if startup_result.hours_backfilled > 0:
+                logger.info(
+                    f"Startup backfill: created {startup_result.hours_backfilled} missing notes"
+                )
+            elif startup_result.hours_missing == 0:
+                logger.info("Startup backfill: no missing notes found")
+        except Exception as e:
+            logger.error(f"Startup backfill failed: {e}")
 
         # Keep main thread alive
         try:

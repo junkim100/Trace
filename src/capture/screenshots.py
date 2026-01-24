@@ -9,7 +9,6 @@ P3-01: Multi-monitor screenshot capture
 
 import gc
 import logging
-import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,7 +16,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from src.core.paths import ensure_daily_cache_dirs
+from src.core.paths import ensure_hourly_screenshot_dir
 
 logger = logging.getLogger(__name__)
 
@@ -187,9 +186,8 @@ class MultiMonitorCapture:
             logger.warning("No monitors available for capture")
             return []
 
-        # Ensure cache directory exists
-        cache_dirs = ensure_daily_cache_dirs(timestamp)
-        screenshots_dir = cache_dirs["screenshots"]
+        # Ensure hourly cache directory exists (YYYYMMDD/HH structure)
+        screenshots_dir = ensure_hourly_screenshot_dir(timestamp)
 
         results = []
 

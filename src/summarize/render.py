@@ -89,8 +89,31 @@ class MarkdownRenderer:
                 lines.append(f"- **{time_str}**{app_str}: {activity.description}")
             lines.append("")
 
-        # Topics and Learning section
-        if summary.topics:
+        # Details section (rich insights about user activity)
+        if summary.details:
+            lines.append("## Details")
+            lines.append("")
+            for detail in summary.details:
+                # Category as a tag
+                category_display = detail.category.replace("_", " ").title()
+                confidence_str = (
+                    f" ({int(detail.confidence * 100)}%)" if detail.confidence < 1.0 else ""
+                )
+                lines.append(f"### {category_display}{confidence_str}")
+                lines.append("")
+                lines.append(detail.summary)
+                if detail.intent:
+                    lines.append(f"- **Intent**: {detail.intent}")
+                if detail.outcome:
+                    lines.append(f"- **Outcome**: {detail.outcome}")
+                if detail.evidence:
+                    lines.append(f"- **Evidence**: {'; '.join(detail.evidence)}")
+                if detail.enrichment_result:
+                    lines.append(f"- **Additional Context**: {detail.enrichment_result}")
+                lines.append("")
+
+        # Legacy Topics section (for backward compatibility)
+        if summary.topics and not summary.details:
             lines.append("## Topics & Learning")
             lines.append("")
             for topic in summary.topics:
@@ -110,6 +133,15 @@ class MarkdownRenderer:
                 lines.append(f"- **{doc.name}**{doc_type}")
                 if doc.key_content:
                     lines.append(f"  - {doc.key_content}")
+                # Add metadata as sub-items if present
+                if doc.metadata:
+                    metadata_parts = []
+                    for key, value in doc.metadata.items():
+                        if isinstance(value, list):
+                            value = ", ".join(str(v) for v in value)
+                        metadata_parts.append(f"{key}: {value}")
+                    if metadata_parts:
+                        lines.append(f"  - {'; '.join(metadata_parts)}")
             lines.append("")
 
         # Websites section
@@ -149,7 +181,25 @@ class MarkdownRenderer:
                     if item.duration_seconds:
                         minutes = item.duration_seconds // 60
                         duration = f" ({minutes}m)"
-                    lines.append(f"- *{item.title}*{source}{duration}")
+
+                    # Build the main line with content type and status
+                    content_type = f"[{item.content_type}] " if item.content_type else ""
+                    status = f" [{item.status}]" if item.status else ""
+                    lines.append(f"- {content_type}*{item.title}*{source}{status}{duration}")
+
+                    # Add metadata as sub-items if present
+                    if item.metadata:
+                        metadata_parts = []
+                        for key, value in item.metadata.items():
+                            if isinstance(value, list):
+                                value = ", ".join(str(v) for v in value)
+                            metadata_parts.append(f"{key}: {value}")
+                        if metadata_parts:
+                            lines.append(f"  - {'; '.join(metadata_parts)}")
+
+                    # Add enrichment result if available
+                    if item.enrichment_result:
+                        lines.append(f"  - *{item.enrichment_result}*")
                 lines.append("")
 
         # Co-activities section

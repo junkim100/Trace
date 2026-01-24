@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 logger = logging.getLogger(__name__)
 
 # Current schema version
-SCHEMA_VERSION = 1
+# v2: Added details field for richer user intent/goal tracking, enhanced WatchingItem with flexible metadata
+SCHEMA_VERSION = 2
 
 
 class ActivityItem(BaseModel):
@@ -39,6 +40,53 @@ class TopicItem(BaseModel):
 
     name: str = Field(..., description="Topic name")
     context: str | None = Field(None, description="How/why it was encountered")
+    confidence: float = Field(0.5, ge=0.0, le=1.0, description="Confidence score")
+
+
+class DetailItem(BaseModel):
+    """
+    A rich detail about the user's activity during this hour.
+
+    Details go beyond simple topics to capture:
+    - User intent and goals
+    - What was achieved or learned
+    - Specific context that would be valuable to recall later
+    - Web-enriched information when applicable
+    """
+
+    category: str = Field(
+        ...,
+        description="Category: goal, achievement, learning, research, problem_solving, decision, insight, context",
+    )
+    summary: str = Field(
+        ...,
+        description="Detailed summary of this aspect (2-4 sentences with specific information)",
+    )
+    intent: str | None = Field(
+        None,
+        description="What was the user trying to accomplish? Be specific about their goal.",
+    )
+    outcome: str | None = Field(
+        None,
+        description="What was the result? Did they achieve their goal? What did they learn?",
+    )
+    evidence: list[str] = Field(
+        default_factory=list,
+        description="Specific evidence from screenshots/activity supporting this detail",
+    )
+    # Web enrichment fields
+    requires_web_enrichment: bool = Field(
+        False,
+        description="Whether this detail would benefit from web search (e.g., sports scores, news context)",
+    )
+    enrichment_query: str | None = Field(
+        None,
+        description="Suggested web search query for enrichment",
+    )
+    enrichment_result: str | None = Field(
+        None,
+        description="Result from web enrichment (populated later)",
+    )
     confidence: float = Field(0.5, ge=0.0, le=1.0, description="Confidence score")
 
 
@@ -92,11 +140,45 @@ class ListeningItem(BaseModel):
 
 
 class WatchingItem(BaseModel):
-    """A watching item (video, show)."""
+    """A watching item (video, show, livestream, or any visual content)."""
 
-    title: str = Field(..., description="Video/show title")
-    source: str | None = Field(None, description="Source platform")
+    title: str = Field(..., description="Content title or description")
+    source: str | None = Field(
+        None, description="Source platform (Netflix, YouTube, TV, browser, etc.)"
+    )
     duration_seconds: int | None = Field(None, description="Duration in seconds")
+    # Flexible content classification
+    content_type: str | None = Field(
+        None,
+        description="Type of content (e.g., movie, tv_show, livestream, sports, tutorial, documentary, news, gaming, etc.)",
+    )
+    # Flexible metadata for any content type - stores key-value pairs specific to the content
+    # Examples: {"teams": ["A", "B"], "score": "2-1"} for sports
+    #           {"episode": "S02E05", "show": "Breaking Bad"} for TV
+    #           {"channel": "MKBHD", "topic": "iPhone review"} for YouTube
+    #           {"game": "Elden Ring", "activity": "boss fight"} for gaming
+    metadata: dict[str, str | list[str] | int | float | bool] = Field(
+        default_factory=dict,
+        description="Flexible key-value metadata specific to content type",
+    )
+    # Status for live/ongoing content
+    status: str | None = Field(
+        None,
+        description="Content status if applicable (live, completed, paused, etc.)",
+    )
+    # Web enrichment fields
+    requires_enrichment: bool = Field(
+        False,
+        description="Whether this content would benefit from web search for additional context",
+    )
+    enrichment_query: str | None = Field(
+        None,
+        description="Suggested search query for enrichment",
+    )
+    enrichment_result: str | None = Field(
+        None,
+        description="Additional context from web search",
+    )
 
 
 class MediaSection(BaseModel):
@@ -107,13 +189,22 @@ class MediaSection(BaseModel):
 
 
 class DocumentItem(BaseModel):
-    """A document that was read or edited."""
+    """A document or file that was read, edited, or created."""
 
-    name: str = Field(..., description="Document or file name")
+    name: str = Field(..., description="Document or file name/path (e.g., 'src/auth/login.ts')")
     type: str = Field(
-        "other", description="Document type: pdf, code, spreadsheet, presentation, other"
+        "other",
+        description="Document type: code, config, terminal, pdf, spreadsheet, presentation, markdown, text, other",
     )
-    key_content: str | None = Field(None, description="Brief summary of content")
+    key_content: str | None = Field(
+        None,
+        description="Specific summary of what was read/edited/created. For code: functions modified, errors seen. For terminal: commands run, output.",
+    )
+    # Flexible metadata for any document type
+    metadata: dict[str, str | list[str] | int | float | bool] = Field(
+        default_factory=dict,
+        description="Additional context: {language, functions, errors, commands, output, etc.}",
+    )
 
 
 class WebsiteItem(BaseModel):
@@ -149,6 +240,11 @@ class HourlySummarySchema(BaseModel):
         default_factory=list, description="Timeline of activities"
     )
     topics: list[TopicItem] = Field(default_factory=list, description="Topics encountered")
+    # New detailed insights field - richer than topics
+    details: list[DetailItem] = Field(
+        default_factory=list,
+        description="Rich details about user intent, goals, achievements, and contextual information",
+    )
     entities: list[EntityItem] = Field(default_factory=list, description="Extracted entities")
     media: MediaSection = Field(default_factory=MediaSection, description="Media consumption")
     documents: list[DocumentItem] = Field(default_factory=list, description="Documents accessed")
@@ -188,6 +284,7 @@ class HourlySummarySchema(BaseModel):
                 "categories",
                 "activities",
                 "topics",
+                "details",
                 "entities",
                 "documents",
                 "websites",

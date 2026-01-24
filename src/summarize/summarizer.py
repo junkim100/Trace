@@ -23,9 +23,15 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from src.core.paths import DB_PATH, ensure_note_directory, get_note_path
+from src.core.paths import (
+    DB_PATH,
+    delete_hourly_screenshot_dir,
+    ensure_note_directory,
+    get_note_path,
+)
 from src.db.migrations import get_connection
 from src.summarize.embeddings import EmbeddingComputer
+from src.summarize.enrichment import WebEnricher
 from src.summarize.entities import EntityExtractor
 from src.summarize.evidence import EvidenceAggregator, HourlyEvidence
 from src.summarize.keyframes import KeyframeSelector, ScreenshotCandidate, SelectedKeyframe
@@ -109,6 +115,9 @@ class HourlySummarizer:
         else:
             self.triager = FrameTriager(api_key=api_key)
 
+        # Web enricher for adding context to notes
+        self.enricher = WebEnricher(api_key=api_key)
+
     def _get_client(self) -> OpenAI:
         """Get or create the OpenAI client."""
         if self._client is None:
@@ -183,12 +192,18 @@ class HourlySummarizer:
                 screenshots_count=evidence.total_screenshots,
             )
 
-        # Step 4: Generate note ID and paths
+        # Step 4: Web enrichment for sports matches and contextual info
+        logger.debug("Enriching summary with web data...")
+        enrichment_result = self.enricher.enrich_summary(summary, hour_start)
+        if enrichment_result.enriched_count > 0:
+            logger.info(f"Enriched {enrichment_result.enriched_count} items with web data")
+
+        # Step 5: Generate note ID and paths
         note_id = str(uuid.uuid4())
         file_path = get_note_path(hour_start)
         ensure_note_directory(hour_start)
 
-        # Step 5: Render and save Markdown
+        # Step 6: Render and save Markdown
         logger.debug("Rendering Markdown note...")
         saved = self.renderer.render_to_file(
             summary=summary,
@@ -207,7 +222,7 @@ class HourlySummarizer:
                 error="Failed to save Markdown file",
             )
 
-        # Step 6: Store note in database
+        # Step 7: Store note in database
         logger.debug("Storing note in database...")
         self._store_note(
             note_id=note_id,
@@ -217,18 +232,26 @@ class HourlySummarizer:
             summary=summary,
         )
 
-        # Step 7: Extract and store entities
+        # Step 8: Extract and store entities
         logger.debug("Extracting entities...")
         links = self.entity_extractor.extract_and_store(summary, note_id)
         entities_count = len(links)
 
-        # Step 8: Compute embedding
+        # Step 9: Compute embedding
         logger.debug("Computing embedding...")
         embedding_result = self.embedding_computer.compute_for_note(
             note_id=note_id,
             summary=summary,
             hour_start=hour_start,
         )
+
+        # Step 10: Clean up screenshot folder for this hour
+        logger.debug("Cleaning up screenshot folder...")
+        cleanup_success = delete_hourly_screenshot_dir(hour_start)
+        if cleanup_success:
+            logger.info(f"Deleted screenshot folder for {hour_start.isoformat()}")
+        else:
+            logger.warning(f"Failed to delete screenshot folder for {hour_start.isoformat()}")
 
         logger.info(f"Summarization complete for {hour_start.isoformat()}: {note_id}")
 
