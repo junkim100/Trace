@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { OnboardingLayout } from '../onboarding/OnboardingLayout';
 import type {
   AllPermissionsState,
@@ -148,6 +148,10 @@ const IDLE_POLL_INTERVAL = 5000; // 5 seconds
 
 function Permissions() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Check if this is an upgrade flow (user already has API key set)
+  const isUpgrade = (location.state as { isUpgrade?: boolean })?.isUpgrade ?? false;
+
   const [permissionsState, setPermissionsState] = useState<AllPermissionsState | null>(null);
   const [instructions, setInstructions] = useState<Record<PermissionType, PermissionInstructions | null>>({
     screen_recording: null,
@@ -276,8 +280,13 @@ function Permissions() {
   };
 
   const handleContinue = () => {
-    // Navigate to API key setup
-    navigate('/onboarding/api-key');
+    if (isUpgrade) {
+      // Upgrade flow: API key already exists, go directly to chat
+      navigate('/chat');
+    } else {
+      // Fresh install: Navigate to API key setup
+      navigate('/onboarding/api-key');
+    }
   };
 
   const handleBack = () => {
@@ -309,10 +318,19 @@ function Permissions() {
   }
 
   return (
-    <OnboardingLayout currentStep={2} totalSteps={4} showBack onBack={handleBack}>
-      <h1 style={styles.title}>Grant Permissions</h1>
+    <OnboardingLayout
+      currentStep={isUpgrade ? 1 : 2}
+      totalSteps={isUpgrade ? 1 : 4}
+      showBack={!isUpgrade}
+      onBack={handleBack}
+    >
+      <h1 style={styles.title}>
+        {isUpgrade ? 'Re-grant Permissions' : 'Grant Permissions'}
+      </h1>
       <p style={styles.subtitle}>
-        Trace needs these permissions to capture your digital activity.
+        {isUpgrade
+          ? 'After updating Trace, macOS requires you to re-grant permissions.'
+          : 'Trace needs these permissions to capture your digital activity.'}
       </p>
 
       {error && (
@@ -363,7 +381,9 @@ function Permissions() {
           onClick={handleContinue}
           disabled={!requiredGranted}
         >
-          {requiredGranted ? 'Next' : 'Grant Required Permissions'}
+          {requiredGranted
+            ? (isUpgrade ? 'Continue to Trace' : 'Next')
+            : 'Grant Required Permissions'}
         </button>
 
         {isActivelyWaiting && !requiredGranted && (

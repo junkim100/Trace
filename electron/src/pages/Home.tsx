@@ -41,7 +41,8 @@ function Home() {
 
           if (!requiredGranted) {
             // Permissions not granted - go to permissions page
-            navigate('/permissions');
+            // Pass flag indicating this is an upgrade (API key already exists)
+            navigate('/permissions', { state: { isUpgrade: true } });
           } else {
             // All good - go to chat
             navigate('/chat');
