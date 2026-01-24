@@ -67,6 +67,7 @@ hiddenimports = [
     'src.trace_app.ipc.server',
     'src.trace_app.ipc.handlers',
     'src.trace_app.ipc.chat_handlers',
+    'src.trace_app.ipc.service_handlers',
     'src.core',
     'src.core.paths',
     'src.core.services',
@@ -85,6 +86,7 @@ hiddenimports = [
     'src.db.vectors',
     'src.summarize',
     'src.jobs',
+    'src.jobs.note_recovery',
     'src.revise',
     'src.chat',
 
@@ -100,6 +102,8 @@ hiddenimports = [
     'tiktoken',
     'tiktoken_ext',
     'tiktoken_ext.openai_public',
+    'mss',
+    'mss.darwin',
 ]
 
 # Collect submodules for packages that need it
@@ -115,6 +119,7 @@ collect_submodules = [
     'apscheduler',
     'pydantic',
     'openai',
+    'mss',
 ]
 
 # Analysis
