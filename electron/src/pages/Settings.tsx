@@ -386,6 +386,22 @@ export function Settings() {
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Capture & Processing</h2>
           <div style={styles.field}>
+            <div style={styles.toggleRow}>
+              <div>
+                <label style={styles.label}>Power Saving Mode</label>
+                <p style={styles.description}>Reduce capture frequency when on battery power to conserve energy.</p>
+              </div>
+              <label className="settings-switch" style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={settings?.config.capture.power_saving_enabled ?? true}
+                  onChange={(e) => handleSettingChange('capture.power_saving_enabled', e.target.checked)}
+                />
+                <span style={styles.slider}></span>
+              </label>
+            </div>
+          </div>
+          <div style={styles.field}>
             <label style={styles.label}>Summarization Interval</label>
             <p style={styles.description}>How often to generate hourly summary notes.</p>
             <select
@@ -413,6 +429,96 @@ export function Settings() {
                   {formatHour(hour)}
                 </option>
               ))}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Screenshot Quality</label>
+            <p style={styles.description}>JPEG compression quality (higher = better quality, larger files).</p>
+            <div style={styles.sliderRow}>
+              <input
+                type="range"
+                min="50"
+                max="100"
+                step="5"
+                value={settings?.config.capture.jpeg_quality ?? 85}
+                onChange={(e) => handleSettingChange('capture.jpeg_quality', Number(e.target.value))}
+                style={styles.slider}
+              />
+              <span style={styles.sliderValue}>{settings?.config.capture.jpeg_quality ?? 85}%</span>
+            </div>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Deduplication Sensitivity</label>
+            <p style={styles.description}>How similar screenshots must be to be considered duplicates (lower = stricter).</p>
+            <div style={styles.sliderRow}>
+              <input
+                type="range"
+                min="1"
+                max="15"
+                step="1"
+                value={settings?.config.capture.dedup_threshold ?? 5}
+                onChange={(e) => handleSettingChange('capture.dedup_threshold', Number(e.target.value))}
+                style={styles.slider}
+              />
+              <span style={styles.sliderValue}>{settings?.config.capture.dedup_threshold ?? 5}</span>
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>AI Models</h2>
+          <p style={styles.description}>
+            Select which OpenAI models to use for different tasks. Faster models use less API credits.
+          </p>
+          <div style={styles.field}>
+            <label style={styles.label}>Frame Triage</label>
+            <p style={styles.description}>Fast model for analyzing screenshots and selecting keyframes.</p>
+            <select
+              value={settings?.config.models?.triage ?? 'gpt-5-nano-2025-08-07'}
+              onChange={(e) => handleSettingChange('models.triage', e.target.value)}
+              style={styles.select}
+            >
+              <option value="gpt-5-nano-2025-08-07">GPT-5 Nano (Fastest)</option>
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Hourly Summarization</label>
+            <p style={styles.description}>Model for generating hourly summary notes.</p>
+            <select
+              value={settings?.config.models?.hourly ?? 'gpt-5-mini-2025-08-07'}
+              onChange={(e) => handleSettingChange('models.hourly', e.target.value)}
+              style={styles.select}
+            >
+              <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Recommended)</option>
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
+              <option value="gpt-4o">GPT-4o (More detailed)</option>
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Daily Revision</label>
+            <p style={styles.description}>Full-featured model for daily note revision and entity extraction.</p>
+            <select
+              value={settings?.config.models?.daily ?? 'gpt-5.2-2025-12-11'}
+              onChange={(e) => handleSettingChange('models.daily', e.target.value)}
+              style={styles.select}
+            >
+              <option value="gpt-5.2-2025-12-11">GPT-5.2 (Best quality)</option>
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Faster)</option>
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Chat Responses</label>
+            <p style={styles.description}>Model for answering your questions about past activity.</p>
+            <select
+              value={settings?.config.models?.chat ?? 'gpt-5-mini-2025-08-07'}
+              onChange={(e) => handleSettingChange('models.chat', e.target.value)}
+              style={styles.select}
+            >
+              <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Recommended)</option>
+              <option value="gpt-4o-mini">GPT-4o Mini (Faster)</option>
+              <option value="gpt-4o">GPT-4o (More detailed)</option>
             </select>
           </div>
         </section>
@@ -924,6 +1030,28 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     minWidth: '200px',
     WebkitAppearance: 'menulist',
+  },
+  // Slider styles
+  sliderRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+  },
+  slider: {
+    flex: 1,
+    height: '4px',
+    backgroundColor: 'var(--border)',
+    borderRadius: '2px',
+    appearance: 'none' as const,
+    cursor: 'pointer',
+  },
+  sliderValue: {
+    minWidth: '40px',
+    textAlign: 'right' as const,
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'var(--text-primary)',
+    fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace',
   },
   // Shortcut display
   shortcutDisplay: {

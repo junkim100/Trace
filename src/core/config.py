@@ -54,6 +54,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "daily_revision_hour": 3,
         "blocked_apps": [],
         "blocked_domains": [],
+        "power_saving_enabled": True,  # Reduce capture frequency on battery (P13-05)
+        "dedup_threshold": 5,  # Perceptual hash threshold for deduplication (P13-06)
+        "jpeg_quality": 85,  # JPEG quality for screenshot compression (P13-07)
+    },
+    "models": {
+        # P13-08: Model selection configuration
+        "triage": "gpt-5-nano-2025-08-07",  # Fast model for frame triage
+        "hourly": "gpt-5-mini-2025-08-07",  # Medium model for hourly summarization
+        "daily": "gpt-5.2-2025-12-11",  # Full model for daily revision
+        "chat": "gpt-5-mini-2025-08-07",  # Model for chat/query responses
     },
     "notifications": {
         "weekly_digest_enabled": True,
@@ -81,6 +91,29 @@ VALID_WEEKLY_DIGEST_DAYS = [
     "sunday",
 ]
 VALID_RETENTION_MONTHS = [None, 6, 12, 24]  # None = forever
+
+# Valid model options (P13-08)
+VALID_MODELS = {
+    "triage": [
+        "gpt-5-nano-2025-08-07",
+        "gpt-4o-mini",
+    ],
+    "hourly": [
+        "gpt-5-mini-2025-08-07",
+        "gpt-4o-mini",
+        "gpt-4o",
+    ],
+    "daily": [
+        "gpt-5.2-2025-12-11",
+        "gpt-4o",
+        "gpt-5-mini-2025-08-07",
+    ],
+    "chat": [
+        "gpt-5-mini-2025-08-07",
+        "gpt-4o-mini",
+        "gpt-4o",
+    ],
+}
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -265,6 +298,25 @@ def get_shortcuts_config() -> dict[str, Any]:
 def get_data_config() -> dict[str, Any]:
     """Get data management settings."""
     return get_config_value("data", DEFAULT_CONFIG["data"])
+
+
+def get_models_config() -> dict[str, str]:
+    """Get model selection settings (P13-08)."""
+    return get_config_value("models", DEFAULT_CONFIG["models"])
+
+
+def get_model(task: str) -> str:
+    """
+    Get the configured model for a specific task.
+
+    Args:
+        task: One of 'triage', 'hourly', 'daily', 'chat'
+
+    Returns:
+        Model name string
+    """
+    models = get_models_config()
+    return models.get(task, DEFAULT_CONFIG["models"].get(task, "gpt-4o-mini"))
 
 
 def validate_config(config: dict[str, Any]) -> list[str]:

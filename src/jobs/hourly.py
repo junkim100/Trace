@@ -5,11 +5,13 @@ Manages the hourly summarization job:
 - Creates pending jobs for each hour
 - Executes summarization
 - Tracks job status and retries
+- Queues operations when offline (P13-04)
 
 Uses APScheduler for scheduling.
 
 P5-09: Hourly job scheduler
 P5-10: Hourly job executor
+P13-04: Offline/fallback mode
 """
 
 import json
@@ -24,6 +26,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from src.core.paths import DB_PATH
+from src.core.queue import OfflineQueue, OperationType
 from src.db.migrations import get_connection
 from src.summarize.summarizer import HourlySummarizer, SummarizationResult
 
@@ -56,12 +59,14 @@ class HourlyJobExecutor:
     - Job creation for new hours
     - Job execution with retry logic
     - Status tracking in database
+    - Offline queueing when API unavailable (P13-04)
     """
 
     def __init__(
         self,
         db_path: Path | str | None = None,
         api_key: str | None = None,
+        offline_queue: OfflineQueue | None = None,
     ):
         """
         Initialize the job executor.
@@ -69,10 +74,12 @@ class HourlyJobExecutor:
         Args:
             db_path: Path to SQLite database
             api_key: OpenAI API key
+            offline_queue: Optional offline queue for fallback
         """
         self.db_path = Path(db_path) if db_path else DB_PATH
         self.api_key = api_key
         self.summarizer = HourlySummarizer(api_key=api_key, db_path=self.db_path)
+        self.offline_queue = offline_queue or OfflineQueue(db_path=self.db_path)
 
     def create_pending_job(self, hour_start: datetime) -> str:
         """
@@ -204,6 +211,31 @@ class HourlyJobExecutor:
         finally:
             conn.close()
 
+        # Check connectivity before attempting summarization
+        if not self.offline_queue.is_online():
+            logger.warning(f"API offline, queueing job {job_id} for later")
+            # Queue for later processing
+            self.offline_queue.enqueue(
+                operation_type=OperationType.HOURLY_SUMMARIZE,
+                payload={
+                    "job_id": job_id,
+                    "hour_start": hour_start.isoformat(),
+                },
+                priority=3,  # High priority for summarization
+            )
+            # Mark job as pending for retry
+            self._update_job_status(
+                job_id=job_id,
+                success=False,
+                error="API offline - queued for later",
+            )
+            return SummarizationResult(
+                success=False,
+                note_id=None,
+                file_path=None,
+                error="API offline - queued for later",
+            )
+
         # Execute summarization
         try:
             logger.info(f"Executing job {job_id} for {hour_start.isoformat()} (attempt {attempts})")
@@ -228,17 +260,37 @@ class HourlyJobExecutor:
             return result
 
         except Exception as e:
+            error_str = str(e)
             logger.error(f"Job {job_id} failed with exception: {e}")
+
+            # Check if this is a connectivity error and queue for later
+            is_connectivity_error = any(
+                keyword in error_str.lower()
+                for keyword in ["connection", "timeout", "network", "unavailable"]
+            )
+
+            if is_connectivity_error:
+                logger.info(f"Connectivity error detected, queueing job {job_id}")
+                self.offline_queue.enqueue(
+                    operation_type=OperationType.HOURLY_SUMMARIZE,
+                    payload={
+                        "job_id": job_id,
+                        "hour_start": hour_start.isoformat(),
+                    },
+                    priority=3,
+                )
+                self.offline_queue.set_online_status(False)
+
             self._update_job_status(
                 job_id=job_id,
                 success=False,
-                error=str(e),
+                error=error_str,
             )
             return SummarizationResult(
                 success=False,
                 note_id=None,
                 file_path=None,
-                error=str(e),
+                error=error_str,
             )
 
     def execute_pending_jobs(self) -> list[SummarizationResult]:

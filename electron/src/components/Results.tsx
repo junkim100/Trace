@@ -6,13 +6,36 @@ interface ResultsProps {
   loading?: boolean;
 }
 
+// Skeleton loading component for note cards
+function SkeletonCard() {
+  return (
+    <div style={styles.skeletonCard}>
+      <div style={styles.skeletonHeader}>
+        <div style={{ ...styles.skeleton, width: '60%', height: '14px' }} />
+        <div style={{ ...styles.skeleton, width: '50px', height: '12px' }} />
+      </div>
+      <div style={{ ...styles.skeleton, width: '100%', height: '12px', marginBottom: '4px' }} />
+      <div style={{ ...styles.skeleton, width: '80%', height: '12px', marginBottom: '8px' }} />
+      <div style={styles.skeletonFooter}>
+        <div style={{ ...styles.skeleton, width: '100px', height: '10px' }} />
+        <div style={styles.skeletonTags}>
+          <div style={{ ...styles.skeleton, width: '40px', height: '16px', borderRadius: '4px' }} />
+          <div style={{ ...styles.skeleton, width: '50px', height: '16px', borderRadius: '4px' }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Results({ notes, onNoteClick, loading = false }: ResultsProps) {
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loading}>
-          <div style={styles.spinner} />
-          <span>Searching...</span>
+        <h3 style={styles.title}>Searching...</h3>
+        <div style={styles.list}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
         </div>
       </div>
     );
@@ -172,6 +195,31 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.7rem',
     color: 'var(--text-secondary)',
     padding: '0.125rem 0.25rem',
+  },
+  skeletonCard: {
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    padding: '0.875rem',
+  },
+  skeletonHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginBottom: '0.5rem',
+  },
+  skeletonFooter: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skeletonTags: {
+    display: 'flex',
+    gap: '0.25rem',
+  },
+  skeleton: {
+    backgroundColor: 'var(--border)',
+    borderRadius: '2px',
+    animation: 'pulse 1.5s ease-in-out infinite',
   },
   loading: {
     display: 'flex',

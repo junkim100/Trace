@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import type { ChatResponse } from '../types/trace-api';
 
 interface AnswerProps {
@@ -5,30 +6,150 @@ interface AnswerProps {
   loading?: boolean;
   error?: string | null;
   onCitationClick?: (noteId: string) => void;
+  onRetry?: () => void;
 }
 
-export function Answer({ response, loading = false, error = null, onCitationClick }: AnswerProps) {
+// Loading message progression for better UX
+const LOADING_MESSAGES = [
+  'Searching your notes...',
+  'Analyzing activity data...',
+  'Building context...',
+  'Generating response...',
+];
+
+// Categorize errors for better user feedback
+function categorizeError(error: string): { type: 'network' | 'api' | 'timeout' | 'unknown'; message: string; suggestion: string } {
+  const lowerError = error.toLowerCase();
+
+  if (lowerError.includes('network') || lowerError.includes('fetch') || lowerError.includes('connection')) {
+    return {
+      type: 'network',
+      message: 'Unable to connect',
+      suggestion: 'Check your internet connection and try again.',
+    };
+  }
+
+  if (lowerError.includes('timeout') || lowerError.includes('timed out')) {
+    return {
+      type: 'timeout',
+      message: 'Request timed out',
+      suggestion: 'The request took too long. Try a simpler query or try again.',
+    };
+  }
+
+  if (lowerError.includes('rate limit') || lowerError.includes('429')) {
+    return {
+      type: 'api',
+      message: 'Too many requests',
+      suggestion: 'Please wait a moment before trying again.',
+    };
+  }
+
+  if (lowerError.includes('api') || lowerError.includes('openai') || lowerError.includes('500')) {
+    return {
+      type: 'api',
+      message: 'Service temporarily unavailable',
+      suggestion: 'The AI service may be experiencing issues. Please try again.',
+    };
+  }
+
+  return {
+    type: 'unknown',
+    message: error,
+    suggestion: 'Try again or rephrase your question.',
+  };
+}
+
+export function Answer({ response, loading = false, error = null, onCitationClick, onRetry }: AnswerProps) {
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const [loadingDots, setLoadingDots] = useState('');
+
+  // Animate loading message progression
+  useEffect(() => {
+    if (!loading) {
+      setLoadingMessageIndex(0);
+      setLoadingDots('');
+      return;
+    }
+
+    // Progress through loading messages
+    const messageInterval = setInterval(() => {
+      setLoadingMessageIndex(prev =>
+        prev < LOADING_MESSAGES.length - 1 ? prev + 1 : prev
+      );
+    }, 2000);
+
+    // Animate dots
+    const dotsInterval = setInterval(() => {
+      setLoadingDots(prev => prev.length >= 3 ? '' : prev + '.');
+    }, 400);
+
+    return () => {
+      clearInterval(messageInterval);
+      clearInterval(dotsInterval);
+    };
+  }, [loading]);
+
   if (loading) {
     return (
       <div style={styles.container}>
         <div style={styles.loading}>
-          <div style={styles.spinner} />
-          <span>Thinking...</span>
+          <div style={styles.spinnerContainer}>
+            <div style={styles.spinner} />
+            <div style={styles.spinnerGlow} />
+          </div>
+          <div style={styles.loadingText}>
+            <span style={styles.loadingMessage}>
+              {LOADING_MESSAGES[loadingMessageIndex]}{loadingDots}
+            </span>
+            <div style={styles.loadingProgress}>
+              {LOADING_MESSAGES.map((_, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    ...styles.progressDot,
+                    backgroundColor: idx <= loadingMessageIndex
+                      ? 'var(--accent)'
+                      : 'var(--border)',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   if (error) {
+    const errorInfo = categorizeError(error);
+
     return (
       <div style={styles.container}>
         <div style={styles.error}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 8v4" />
-            <path d="M12 16h.01" />
-          </svg>
-          <span>{error}</span>
+          <div style={styles.errorHeader}>
+            <div style={styles.errorIcon}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v4" />
+                <path d="M12 16h.01" />
+              </svg>
+            </div>
+            <div style={styles.errorContent}>
+              <span style={styles.errorTitle}>{errorInfo.message}</span>
+              <span style={styles.errorSuggestion}>{errorInfo.suggestion}</span>
+            </div>
+          </div>
+
+          {onRetry && (
+            <button onClick={onRetry} style={styles.retryButton}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M1 4v6h6" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+              </svg>
+              Try Again
+            </button>
+          )}
         </div>
       </div>
     );
@@ -139,27 +260,101 @@ const styles: Record<string, React.CSSProperties> = {
   loading: {
     display: 'flex',
     alignItems: 'center',
-    gap: '0.75rem',
+    gap: '1rem',
     padding: '1.5rem',
     color: 'var(--text-secondary)',
   },
+  spinnerContainer: {
+    position: 'relative',
+    width: '32px',
+    height: '32px',
+  },
   spinner: {
-    width: '20px',
-    height: '20px',
-    border: '2px solid var(--border)',
+    width: '32px',
+    height: '32px',
+    border: '3px solid var(--border)',
     borderTopColor: 'var(--accent)',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite',
   },
+  spinnerGlow: {
+    position: 'absolute',
+    top: '-2px',
+    left: '-2px',
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(0, 122, 255, 0.2) 0%, transparent 70%)',
+    animation: 'pulse 2s ease-in-out infinite',
+  },
+  loadingText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  loadingMessage: {
+    fontSize: '0.95rem',
+    color: 'var(--text-primary)',
+    minWidth: '180px',
+  },
+  loadingProgress: {
+    display: 'flex',
+    gap: '0.375rem',
+  },
+  progressDot: {
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    transition: 'background-color 0.3s ease',
+  },
   error: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '0.75rem',
-    padding: '1rem',
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-    border: '1px solid rgba(255, 59, 48, 0.3)',
-    borderRadius: '8px',
+    flexDirection: 'column',
+    gap: '1rem',
+    padding: '1.25rem',
+    backgroundColor: 'rgba(255, 59, 48, 0.08)',
+    border: '1px solid rgba(255, 59, 48, 0.2)',
+    borderRadius: '12px',
+  },
+  errorHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '0.875rem',
+  },
+  errorIcon: {
+    flexShrink: 0,
     color: '#ff3b30',
+    marginTop: '2px',
+  },
+  errorContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.375rem',
+  },
+  errorTitle: {
+    fontSize: '0.95rem',
+    fontWeight: 500,
+    color: '#ff3b30',
+  },
+  errorSuggestion: {
+    fontSize: '0.85rem',
+    color: 'var(--text-secondary)',
+  },
+  retryButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    padding: '0.625rem 1rem',
+    backgroundColor: 'rgba(255, 59, 48, 0.12)',
+    border: '1px solid rgba(255, 59, 48, 0.25)',
+    borderRadius: '8px',
+    fontSize: '0.875rem',
+    fontWeight: 500,
+    color: '#ff3b30',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    alignSelf: 'flex-start',
   },
   placeholder: {
     flex: 1,

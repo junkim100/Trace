@@ -4,9 +4,14 @@ Browser URL Capture for Trace
 Captures the current URL and page title from web browsers:
 - Safari (via AppleScript)
 - Chrome (via AppleScript or Chrome DevTools Protocol)
+- Firefox (via AppleScript - window title only)
+- Microsoft Edge (via AppleScript, Chromium-based)
+- Brave (via AppleScript, Chromium-based)
+- Arc (via AppleScript, Chromium-based)
 
 P3-08: Safari URL capture
 P3-09: Chrome URL capture
+P13-02: Firefox/Edge/Brave URL capture
 """
 
 import json
@@ -282,14 +287,239 @@ def capture_firefox_url(timestamp: datetime | None = None) -> BrowserURL | None:
     )
 
 
+def capture_edge_url(timestamp: datetime | None = None) -> BrowserURL | None:
+    """
+    Capture the current URL and title from Microsoft Edge.
+
+    Edge is Chromium-based and supports AppleScript similar to Chrome.
+
+    Args:
+        timestamp: Timestamp for the capture (defaults to now)
+
+    Returns:
+        BrowserURL with Edge information or None if Edge is not running
+    """
+    if sys.platform != "darwin":
+        return None
+
+    if timestamp is None:
+        timestamp = datetime.now()
+
+    # Check if Edge is running
+    if not _check_app_running("com.microsoft.edgemac"):
+        return None
+
+    # Get URL and title of the active tab
+    script = """
+    tell application "Microsoft Edge"
+        if (count of windows) > 0 then
+            set theURL to URL of active tab of front window
+            set theTitle to title of active tab of front window
+            return theURL & "|||" & theTitle
+        else
+            return "|||"
+        end if
+    end tell
+    """
+
+    success, output = _run_applescript(script)
+
+    if not success:
+        # Try alternative approach - just get window name from System Events
+        script = """
+        tell application "System Events"
+            tell process "Microsoft Edge"
+                if (count of windows) > 0 then
+                    return name of front window
+                end if
+            end tell
+        end tell
+        """
+        success, window_name = _run_applescript(script)
+        if success and window_name:
+            return BrowserURL(
+                timestamp=timestamp,
+                browser="edge",
+                url=None,  # Can't get URL without automation permission
+                title=window_name,
+                is_active=_get_frontmost_app_bundle() == "com.microsoft.edgemac",
+            )
+        return None
+
+    parts = output.split("|||", 1)
+    url = parts[0] if parts[0] else None
+    title = parts[1] if len(parts) > 1 and parts[1] else None
+
+    # Check if Edge is frontmost
+    is_active = _get_frontmost_app_bundle() == "com.microsoft.edgemac"
+
+    return BrowserURL(
+        timestamp=timestamp,
+        browser="edge",
+        url=url,
+        title=title,
+        is_active=is_active,
+    )
+
+
+def capture_brave_url(timestamp: datetime | None = None) -> BrowserURL | None:
+    """
+    Capture the current URL and title from Brave Browser.
+
+    Brave is Chromium-based and supports AppleScript similar to Chrome.
+
+    Args:
+        timestamp: Timestamp for the capture (defaults to now)
+
+    Returns:
+        BrowserURL with Brave information or None if Brave is not running
+    """
+    if sys.platform != "darwin":
+        return None
+
+    if timestamp is None:
+        timestamp = datetime.now()
+
+    # Check if Brave is running
+    if not _check_app_running("com.brave.Browser"):
+        return None
+
+    # Get URL and title of the active tab
+    script = """
+    tell application "Brave Browser"
+        if (count of windows) > 0 then
+            set theURL to URL of active tab of front window
+            set theTitle to title of active tab of front window
+            return theURL & "|||" & theTitle
+        else
+            return "|||"
+        end if
+    end tell
+    """
+
+    success, output = _run_applescript(script)
+
+    if not success:
+        # Try alternative approach - just get window name from System Events
+        script = """
+        tell application "System Events"
+            tell process "Brave Browser"
+                if (count of windows) > 0 then
+                    return name of front window
+                end if
+            end tell
+        end tell
+        """
+        success, window_name = _run_applescript(script)
+        if success and window_name:
+            return BrowserURL(
+                timestamp=timestamp,
+                browser="brave",
+                url=None,  # Can't get URL without automation permission
+                title=window_name,
+                is_active=_get_frontmost_app_bundle() == "com.brave.Browser",
+            )
+        return None
+
+    parts = output.split("|||", 1)
+    url = parts[0] if parts[0] else None
+    title = parts[1] if len(parts) > 1 and parts[1] else None
+
+    # Check if Brave is frontmost
+    is_active = _get_frontmost_app_bundle() == "com.brave.Browser"
+
+    return BrowserURL(
+        timestamp=timestamp,
+        browser="brave",
+        url=url,
+        title=title,
+        is_active=is_active,
+    )
+
+
+def capture_arc_url(timestamp: datetime | None = None) -> BrowserURL | None:
+    """
+    Capture the current URL and title from Arc Browser.
+
+    Arc is Chromium-based and supports AppleScript.
+
+    Args:
+        timestamp: Timestamp for the capture (defaults to now)
+
+    Returns:
+        BrowserURL with Arc information or None if Arc is not running
+    """
+    if sys.platform != "darwin":
+        return None
+
+    if timestamp is None:
+        timestamp = datetime.now()
+
+    # Check if Arc is running
+    if not _check_app_running("company.thebrowser.Browser"):
+        return None
+
+    # Get URL and title of the active tab
+    script = """
+    tell application "Arc"
+        if (count of windows) > 0 then
+            set theURL to URL of active tab of front window
+            set theTitle to title of active tab of front window
+            return theURL & "|||" & theTitle
+        else
+            return "|||"
+        end if
+    end tell
+    """
+
+    success, output = _run_applescript(script)
+
+    if not success:
+        # Try alternative approach - just get window name from System Events
+        script = """
+        tell application "System Events"
+            tell process "Arc"
+                if (count of windows) > 0 then
+                    return name of front window
+                end if
+            end tell
+        end tell
+        """
+        success, window_name = _run_applescript(script)
+        if success and window_name:
+            return BrowserURL(
+                timestamp=timestamp,
+                browser="arc",
+                url=None,  # Can't get URL without automation permission
+                title=window_name,
+                is_active=_get_frontmost_app_bundle() == "company.thebrowser.Browser",
+            )
+        return None
+
+    parts = output.split("|||", 1)
+    url = parts[0] if parts[0] else None
+    title = parts[1] if len(parts) > 1 and parts[1] else None
+
+    # Check if Arc is frontmost
+    is_active = _get_frontmost_app_bundle() == "company.thebrowser.Browser"
+
+    return BrowserURL(
+        timestamp=timestamp,
+        browser="arc",
+        url=url,
+        title=title,
+        is_active=is_active,
+    )
+
+
 # Browser bundle IDs and their capture functions
 BROWSER_CAPTURERS = {
     "com.apple.Safari": ("safari", capture_safari_url),
     "com.google.Chrome": ("chrome", capture_chrome_url),
     "org.mozilla.firefox": ("firefox", capture_firefox_url),
-    "com.microsoft.Edge": ("edge", None),  # TODO: Similar to Chrome
-    "com.brave.Browser": ("brave", None),  # TODO: Similar to Chrome
-    "com.operasoftware.Opera": ("opera", None),  # TODO: Similar to Chrome
+    "com.microsoft.edgemac": ("edge", capture_edge_url),
+    "com.brave.Browser": ("brave", capture_brave_url),
+    "company.thebrowser.Browser": ("arc", capture_arc_url),
 }
 
 
@@ -408,6 +638,27 @@ if __name__ == "__main__":
             return json.loads(result.to_json())
         return None
 
+    def edge():
+        """Capture Microsoft Edge URL."""
+        result = capture_edge_url()
+        if result:
+            return json.loads(result.to_json())
+        return None
+
+    def brave():
+        """Capture Brave URL."""
+        result = capture_brave_url()
+        if result:
+            return json.loads(result.to_json())
+        return None
+
+    def arc():
+        """Capture Arc URL."""
+        result = capture_arc_url()
+        if result:
+            return json.loads(result.to_json())
+        return None
+
     def capture():
         """Capture from the active browser."""
         capturer = URLCapture()
@@ -443,6 +694,9 @@ if __name__ == "__main__":
             "safari": safari,
             "chrome": chrome,
             "firefox": firefox,
+            "edge": edge,
+            "brave": brave,
+            "arc": arc,
             "capture": capture,
             "all": all_browsers,
             "watch": watch,
