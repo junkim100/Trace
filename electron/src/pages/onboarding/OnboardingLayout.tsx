@@ -18,7 +18,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-primary)',
   },
   titlebar: {
-    height: 38,
+    minHeight: 52,
     backgroundColor: 'transparent',
     flexShrink: 0,
   },
@@ -60,7 +60,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   backButton: {
     position: 'absolute',
-    top: 50,
+    top: 60,
     left: 20,
     display: 'flex',
     alignItems: 'center',
