@@ -193,15 +193,15 @@ MVP delivers:
 
 | ID | Description | Files/Modules | Acceptance Criteria | Status |
 |----|-------------|---------------|---------------------|--------|
-| P13-01 | Database performance indexes | `src/db/schema.sql`, `src/db/migrations/` | Add indexes on entity_type, note_entities composite, jobs status | [ ] |
-| P13-02 | Firefox/Edge/Brave URL capture | `src/capture/urls.py` | Extend URL capture to Firefox, Edge, and Brave browsers | [ ] |
-| P13-03 | Error feedback UI | `electron/src/components/` | Loading states, error messages, and retry options in chat UI | [ ] |
-| P13-04 | Offline/fallback mode | `src/core/queue.py`, `src/jobs/` | Queue operations when API unavailable, process when back online | [ ] |
-| P13-05 | Power saving mode | `src/capture/daemon.py`, `electron/src/pages/Settings.tsx` | Reduce capture frequency when on battery power | [ ] |
-| P13-06 | Configurable deduplication threshold | `src/capture/dedup.py`, `electron/src/pages/Settings.tsx` | User-configurable similarity threshold in Settings | [ ] |
-| P13-07 | JPEG quality configuration | `src/capture/screenshots.py`, `electron/src/pages/Settings.tsx` | Configurable JPEG quality for screenshot compression | [ ] |
-| P13-08 | Model selection UI | `electron/src/pages/Settings.tsx`, `src/core/llm.py` | Allow users to choose between available OpenAI models | [ ] |
-| P13-09 | Connection pooling | `src/db/connection.py` | Implement database connection pooling for better performance | [ ] |
+| P13-01 | Database performance indexes | `src/db/schema.sql`, `src/db/migrations/007_performance_indexes.sql` | Add indexes on entity_type, note_entities composite, jobs status | [x] |
+| P13-02 | Firefox/Edge/Brave URL capture | `src/capture/urls.py` | Extend URL capture to Firefox, Edge, Brave, and Arc browsers | [x] |
+| P13-03 | Error feedback UI | `electron/src/components/Answer.tsx`, `electron/src/components/Results.tsx` | Loading states, error messages, and retry options in chat UI | [x] |
+| P13-04 | Offline/fallback mode | `src/core/queue.py`, `src/jobs/hourly.py` | Queue operations when API unavailable, process when back online | [x] |
+| P13-05 | Power saving mode | `src/capture/daemon.py`, `electron/src/pages/Settings.tsx` | Reduce capture frequency when on battery power | [x] |
+| P13-06 | Configurable deduplication threshold | `src/capture/dedup.py`, `src/core/config.py`, `electron/src/pages/Settings.tsx` | User-configurable similarity threshold in Settings | [x] |
+| P13-07 | JPEG quality configuration | `src/core/config.py`, `electron/src/pages/Settings.tsx` | Configurable JPEG quality for screenshot compression | [x] |
+| P13-08 | Model selection UI | `electron/src/pages/Settings.tsx`, `src/core/config.py` | Allow users to choose between available OpenAI models | [x] |
+| P13-09 | Connection pooling | `src/db/pool.py` | Implement database connection pooling for better performance | [x] |
 
 ### Phase 14: Future Platform Expansion
 

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChatInput } from '../components/ChatInput';
 import { TimeFilter, TimePreset, getTimeFilterHint } from '../components/TimeFilter';
@@ -16,8 +16,10 @@ export function Chat() {
   const [customStart, setCustomStart] = useState<string>();
   const [customEnd, setCustomEnd] = useState<string>();
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const lastQueryRef = useRef<string>('');
 
   const handleQuery = useCallback(async (query: string) => {
+    lastQueryRef.current = query;
     setLoading(true);
     setError(null);
 
@@ -63,6 +65,12 @@ export function Chat() {
     setCustomStart(start);
     setCustomEnd(end);
   }, []);
+
+  const handleRetry = useCallback(() => {
+    if (lastQueryRef.current) {
+      handleQuery(lastQueryRef.current);
+    }
+  }, [handleQuery]);
 
   return (
     <div style={styles.container}>
@@ -140,6 +148,7 @@ export function Chat() {
               loading={loading}
               error={error}
               onCitationClick={setSelectedNoteId}
+              onRetry={handleRetry}
             />
           </div>
           <ChatInput

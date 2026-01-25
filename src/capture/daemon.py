@@ -9,10 +9,12 @@ Coordinates all capture activities at 1-second intervals:
 - Now playing (via macOS MediaRemote - works with any media app)
 - Location snapshots
 - Browser URLs
+- Power saving mode (P13-05)
 
 All captured data is written to SQLite and cache directories.
 
 P3-10: Capture daemon orchestrator
+P13-05: Power saving mode
 """
 
 import logging
@@ -41,8 +43,45 @@ logger = logging.getLogger(__name__)
 # Default capture interval (seconds)
 DEFAULT_CAPTURE_INTERVAL = 1.0
 
+# Power saving mode capture interval (seconds) - reduced frequency on battery
+POWER_SAVING_CAPTURE_INTERVAL = 3.0
+
 # Location capture interval (seconds) - less frequent than other captures
 LOCATION_CAPTURE_INTERVAL = 60.0
+
+
+def is_on_battery() -> bool:
+    """
+    Check if the Mac is running on battery power.
+
+    Returns:
+        True if on battery, False if plugged in or unable to determine
+    """
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["pmset", "-g", "batt"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+
+        if result.returncode == 0:
+            output = result.stdout.lower()
+            # Check for "battery power" indicator
+            if "battery power" in output or "'battery power'" in output:
+                return True
+            # Check for "ac power" indicator
+            if "ac power" in output or "'ac power'" in output:
+                return False
+            # Check for percentage with "discharging"
+            if "discharging" in output:
+                return True
+
+        return False
+    except Exception:
+        return False
 
 
 @dataclass
@@ -95,6 +134,8 @@ class CaptureDaemon:
         dedup_threshold: int = 5,
         location_interval: float = LOCATION_CAPTURE_INTERVAL,
         db_path: Path | str | None = None,
+        power_saving_enabled: bool = True,
+        power_saving_interval: float = POWER_SAVING_CAPTURE_INTERVAL,
     ):
         """
         Initialize the capture daemon.
@@ -105,10 +146,14 @@ class CaptureDaemon:
             dedup_threshold: Perceptual hash threshold for deduplication
             location_interval: Seconds between location captures
             db_path: Path to SQLite database (uses default if None)
+            power_saving_enabled: Whether to enable power saving mode (P13-05)
+            power_saving_interval: Capture interval when on battery power
         """
         self.capture_interval = capture_interval
         self.location_interval = location_interval
         self.db_path = Path(db_path) if db_path else None
+        self.power_saving_enabled = power_saving_enabled
+        self.power_saving_interval = power_saving_interval
 
         # Initialize capture components
         self._screenshot_capture = MultiMonitorCapture(jpeg_quality=jpeg_quality)
@@ -125,6 +170,9 @@ class CaptureDaemon:
         self._stats = CaptureStats()
         self._last_location_capture: datetime | None = None
         self._callbacks: list[Callable[[CaptureSnapshot], None]] = []
+        self._on_battery = False
+        self._last_power_check: float = 0
+        self._power_check_interval = 30.0  # Check power status every 30 seconds
 
         # Shutdown handling
         self._shutdown_event = threading.Event()
@@ -223,6 +271,43 @@ class CaptureDaemon:
         """Get current capture statistics."""
         return self._stats
 
+    def is_power_saving_active(self) -> bool:
+        """Check if power saving mode is currently active."""
+        return self._on_battery and self.power_saving_enabled
+
+    def get_effective_interval(self) -> float:
+        """Get the current effective capture interval."""
+        if self.is_power_saving_active():
+            return self.power_saving_interval
+        return self.capture_interval
+
+    def set_power_saving_enabled(self, enabled: bool) -> None:
+        """
+        Enable or disable power saving mode.
+
+        Args:
+            enabled: Whether to enable power saving
+        """
+        self.power_saving_enabled = enabled
+        logger.info(f"Power saving mode {'enabled' if enabled else 'disabled'}")
+
+    def _update_power_status(self) -> None:
+        """Update the battery/power status."""
+        current_time = time.time()
+        if current_time - self._last_power_check >= self._power_check_interval:
+            self._last_power_check = current_time
+            was_on_battery = self._on_battery
+            self._on_battery = is_on_battery()
+
+            if was_on_battery != self._on_battery:
+                if self._on_battery:
+                    logger.info(
+                        f"Switched to battery power. "
+                        f"{'Power saving active' if self.power_saving_enabled else 'Power saving disabled'}"
+                    )
+                else:
+                    logger.info("Switched to AC power. Normal capture interval restored.")
+
     def _run_loop(self) -> None:
         """Main capture loop."""
         import gc
@@ -235,10 +320,16 @@ class CaptureDaemon:
         except ImportError:
             has_objc = False
 
-        logger.info(f"Capture loop started (interval: {self.capture_interval}s)")
+        logger.info(
+            f"Capture loop started (interval: {self.capture_interval}s, "
+            f"power saving: {self.power_saving_interval}s)"
+        )
 
         while self._running and not self._shutdown_event.is_set():
             loop_start = time.time()
+
+            # Check and update power status periodically
+            self._update_power_status()
 
             # CRITICAL: Wrap entire tick in autorelease pool
             # This ensures ALL PyObjC objects created during capture are
@@ -253,9 +344,10 @@ class CaptureDaemon:
             # Force immediate garbage collection after pool drains
             gc.collect()
 
-            # Sleep for remaining interval
+            # Sleep for remaining interval (use effective interval for power saving)
             elapsed = time.time() - loop_start
-            sleep_time = max(0, self.capture_interval - elapsed)
+            effective_interval = self.get_effective_interval()
+            sleep_time = max(0, effective_interval - elapsed)
             if sleep_time > 0:
                 self._shutdown_event.wait(timeout=sleep_time)
 
