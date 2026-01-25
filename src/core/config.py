@@ -76,6 +76,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "retention_months": None,  # None = keep forever
     },
     "api_key": None,
+    "user_profile": {
+        "name": "",
+        "age": "",
+        "interests": "",
+        "languages": "",
+        "additional_info": "",
+    },
 }
 
 # Valid values for certain settings
@@ -298,6 +305,11 @@ def get_shortcuts_config() -> dict[str, Any]:
 def get_data_config() -> dict[str, Any]:
     """Get data management settings."""
     return get_config_value("data", DEFAULT_CONFIG["data"])
+
+
+def get_user_profile() -> dict[str, str]:
+    """Get user profile settings."""
+    return get_config_value("user_profile", DEFAULT_CONFIG["user_profile"])
 
 
 def get_models_config() -> dict[str, str]:

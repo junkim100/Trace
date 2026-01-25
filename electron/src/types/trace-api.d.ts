@@ -312,6 +312,15 @@ export interface AppSettings {
   has_api_key: boolean;
 }
 
+/** User profile settings */
+export interface UserProfile {
+  name: string;
+  age: string;
+  interests: string;
+  languages: string;
+  additional_info: string;
+}
+
 /** All settings with full configuration and metadata */
 export interface AllSettings {
   config: {
@@ -321,11 +330,21 @@ export interface AllSettings {
       daily_revision_hour: number;
       blocked_apps: string[];
       blocked_domains: string[];
+      power_saving_enabled?: boolean;
+      dedup_threshold?: number;
+      jpeg_quality?: number;
+    };
+    models?: {
+      triage: string;
+      hourly: string;
+      daily: string;
+      chat: string;
     };
     notifications: { weekly_digest_enabled: boolean; weekly_digest_day: string };
     shortcuts: { open_trace: string };
     data: { retention_months: number | null };
     api_key: string | null;
+    user_profile?: UserProfile;
   };
   options: {
     summarization_intervals: number[];
@@ -347,8 +366,14 @@ export interface SettingsAPI {
   /** Get current settings */
   get(): Promise<AppSettings>;
 
+  /** Get a specific setting value by key path */
+  get(key: string): Promise<unknown>;
+
   /** Get all settings with metadata */
   getAll(): Promise<AllSettings>;
+
+  /** Set a single setting value by key path */
+  set(key: string, value: unknown): Promise<{ success: boolean }>;
 
   /** Set a single setting value by key path */
   setValue(key: string, value: unknown): Promise<{ success: boolean }>;

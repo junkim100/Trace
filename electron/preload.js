@@ -205,12 +205,15 @@ contextBridge.exposeInMainWorld('traceAPI', {
     // Get all settings with metadata (config, options, defaults, paths)
     getAll: () => ipcRenderer.invoke('python:call', 'settings.get_all', {}),
 
-    // Get current settings (legacy compatibility)
-    get: () => ipcRenderer.invoke('python:call', 'settings.get', {}),
+    // Get current settings (legacy compatibility) or a specific value by key path
+    get: (key) =>
+      key
+        ? ipcRenderer.invoke('python:call', 'settings.get_value', { key })
+        : ipcRenderer.invoke('python:call', 'settings.get', {}),
 
     // Set one or more settings (can be nested or flat key paths)
-    set: (settings) =>
-      ipcRenderer.invoke('python:call', 'settings.set', { settings }),
+    set: (key, value) =>
+      ipcRenderer.invoke('python:call', 'settings.set_value', { key, value }),
 
     // Set a single setting value by key path (e.g., "capture.summarization_interval_minutes")
     setValue: (key, value) =>

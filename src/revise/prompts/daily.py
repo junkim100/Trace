@@ -9,6 +9,8 @@ P6-01: Daily revision prompt
 
 from datetime import date
 
+from src.core.config import get_user_profile
+
 # Schema version for daily output validation
 DAILY_SCHEMA_VERSION = 1
 
@@ -133,6 +135,59 @@ You MUST respond with valid JSON conforming to this schema:
 
 The current schema version is {DAILY_SCHEMA_VERSION}. Include this in your response.
 """
+
+
+def get_user_profile_context() -> str:
+    """
+    Get user profile context to include in prompts.
+
+    Returns:
+        String with user profile info, or empty string if no profile set.
+    """
+    profile = get_user_profile()
+
+    # Check if any profile fields are set
+    has_profile = any(
+        profile.get(key) for key in ["name", "age", "interests", "languages", "additional_info"]
+    )
+
+    if not has_profile:
+        return ""
+
+    lines = ["## User Profile", ""]
+
+    if profile.get("name"):
+        lines.append(f"- Name: {profile['name']}")
+    if profile.get("age"):
+        lines.append(f"- Age: {profile['age']}")
+    if profile.get("interests"):
+        lines.append(f"- Interests & Hobbies: {profile['interests']}")
+    if profile.get("languages"):
+        lines.append(f"- Languages: {profile['languages']}")
+    if profile.get("additional_info"):
+        lines.append(f"- Additional Context: {profile['additional_info']}")
+
+    lines.append("")
+    lines.append(
+        "Use this profile information to personalize the day summary and pattern recognition, understanding activities in context of the user's interests and background."
+    )
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def build_daily_system_prompt() -> str:
+    """
+    Build the daily system prompt with user profile context if available.
+
+    Returns:
+        Complete system prompt string.
+    """
+    profile_context = get_user_profile_context()
+
+    if profile_context:
+        return DAILY_SYSTEM_PROMPT + "\n" + profile_context
+    return DAILY_SYSTEM_PROMPT
 
 
 def build_daily_user_prompt(
@@ -312,7 +367,7 @@ def build_daily_messages(
     Returns:
         List of message dicts for the OpenAI API
     """
-    messages = [{"role": "system", "content": DAILY_SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": build_daily_system_prompt()}]
 
     user_prompt = build_daily_user_prompt(day, hourly_notes)
     messages.append({"role": "user", "content": user_prompt})

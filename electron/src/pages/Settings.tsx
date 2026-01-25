@@ -29,6 +29,16 @@ export function Settings() {
   // App version
   const [appVersion, setAppVersion] = useState<string>('');
 
+  // User profile state
+  const [userProfile, setUserProfile] = useState({
+    name: '',
+    age: '',
+    interests: '',
+    languages: '',
+    additional_info: '',
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+
   // Export state
   const [exportLoading, setExportLoading] = useState(false);
   const [exportSummary, setExportSummary] = useState<{
@@ -117,6 +127,31 @@ export function Settings() {
 
     // Load app version
     window.traceAPI.getVersion().then(setAppVersion).catch(() => {});
+
+    // Load user profile
+    const loadUserProfile = async () => {
+      try {
+        const profile = await window.traceAPI.settings.get('user_profile') as {
+          name?: string;
+          age?: string;
+          interests?: string;
+          languages?: string;
+          additional_info?: string;
+        } | null;
+        if (profile) {
+          setUserProfile({
+            name: profile.name || '',
+            age: profile.age || '',
+            interests: profile.interests || '',
+            languages: profile.languages || '',
+            additional_info: profile.additional_info || '',
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load user profile:', err);
+      }
+    };
+    loadUserProfile();
   }, []);
 
   const loadExportSummary = async () => {
@@ -132,6 +167,25 @@ export function Settings() {
       }
     } catch (err) {
       console.error('Failed to load export summary:', err);
+    }
+  };
+
+  const handleProfileChange = (key: string, value: string) => {
+    setUserProfile(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveProfile = async () => {
+    setProfileSaving(true);
+    setMessage(null);
+    try {
+      for (const [key, value] of Object.entries(userProfile)) {
+        await window.traceAPI.settings.setValue(`user_profile.${key}`, value);
+      }
+      setMessage({ type: 'success', text: 'Profile saved successfully' });
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save profile' });
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -345,6 +399,71 @@ export function Settings() {
               </button>
             </div>
           </div>
+        </section>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Your Profile</h2>
+          <p style={styles.description}>
+            This information helps personalize your activity notes.
+          </p>
+          <div style={styles.field}>
+            <label style={styles.label}>Name</label>
+            <input
+              type="text"
+              value={userProfile.name}
+              onChange={(e) => handleProfileChange('name', e.target.value)}
+              placeholder="e.g., Alex Chen"
+              style={styles.profileInput}
+            />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Age</label>
+            <input
+              type="text"
+              value={userProfile.age}
+              onChange={(e) => handleProfileChange('age', e.target.value)}
+              placeholder="e.g., 28"
+              style={styles.profileInput}
+            />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Interests & Hobbies</label>
+            <textarea
+              value={userProfile.interests}
+              onChange={(e) => handleProfileChange('interests', e.target.value)}
+              placeholder="e.g., software development, photography, hiking, cooking"
+              style={styles.profileTextarea}
+            />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Languages You Speak</label>
+            <input
+              type="text"
+              value={userProfile.languages}
+              onChange={(e) => handleProfileChange('languages', e.target.value)}
+              placeholder="e.g., English, Spanish, Mandarin"
+              style={styles.profileInput}
+            />
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Additional Info</label>
+            <textarea
+              value={userProfile.additional_info}
+              onChange={(e) => handleProfileChange('additional_info', e.target.value)}
+              placeholder="e.g., I work as a product manager at a tech startup, prefer working late at night"
+              style={styles.profileTextarea}
+            />
+          </div>
+          <button
+            onClick={handleSaveProfile}
+            disabled={profileSaving}
+            style={{
+              ...styles.saveButton,
+              ...(profileSaving ? styles.saveButtonDisabled : {}),
+            }}
+          >
+            {profileSaving ? 'Saving...' : 'Save Profile'}
+          </button>
         </section>
 
         <section style={styles.section}>
@@ -1320,6 +1439,30 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.85rem',
     color: 'var(--text-secondary)',
     textAlign: 'center' as const,
+  },
+  // Profile input styles
+  profileInput: {
+    width: '100%',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    padding: '0.625rem 0.875rem',
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    outline: 'none',
+  },
+  profileTextarea: {
+    width: '100%',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    padding: '0.625rem 0.875rem',
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    outline: 'none',
+    minHeight: '80px',
+    resize: 'vertical' as const,
+    fontFamily: 'inherit',
   },
 };
 

@@ -16,6 +16,7 @@ from src.core.config import (
     get_api_key,
     get_appearance_config,
     get_capture_config,
+    get_config_value,
     get_data_config,
     get_notifications_config,
     get_shortcuts_config,
@@ -90,6 +91,24 @@ def handle_get_settings(params: dict[str, Any]) -> dict[str, Any]:
         "shortcuts": get_shortcuts_config(),
         "data": get_data_config(),
     }
+
+
+@handler("settings.get_value")
+def handle_get_value(params: dict[str, Any]) -> Any:
+    """Get a single configuration value by key path.
+
+    Params:
+        key: Dot-separated key path (e.g., "user_profile", "capture.jpeg_quality")
+
+    Returns:
+        The configuration value at the specified path, or None if not found.
+    """
+    key = params.get("key")
+
+    if not key:
+        raise ValueError("key parameter is required")
+
+    return get_config_value(key)
 
 
 @handler("settings.set")

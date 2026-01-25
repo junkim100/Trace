@@ -284,8 +284,8 @@ function Permissions() {
       // Upgrade flow: API key already exists, go directly to chat
       navigate('/chat');
     } else {
-      // Fresh install: Navigate to API key setup
-      navigate('/onboarding/api-key');
+      // Fresh install: Navigate to user profile setup
+      navigate('/onboarding/profile');
     }
   };
 
@@ -299,7 +299,7 @@ function Permissions() {
 
   if (!window.traceAPI) {
     return (
-      <OnboardingLayout currentStep={2} totalSteps={4}>
+      <OnboardingLayout currentStep={2} totalSteps={5}>
         <h1 style={styles.title}>Permissions</h1>
         <p style={styles.subtitle}>Not running in Electron</p>
       </OnboardingLayout>
@@ -308,7 +308,7 @@ function Permissions() {
 
   if (!pythonReady) {
     return (
-      <OnboardingLayout currentStep={2} totalSteps={4}>
+      <OnboardingLayout currentStep={2} totalSteps={5}>
         <div style={styles.loadingContainer}>
           <div style={styles.spinner} />
           <p style={styles.loadingText}>Connecting to backend...</p>
@@ -320,7 +320,7 @@ function Permissions() {
   return (
     <OnboardingLayout
       currentStep={isUpgrade ? 1 : 2}
-      totalSteps={isUpgrade ? 1 : 4}
+      totalSteps={isUpgrade ? 1 : 5}
       showBack={!isUpgrade}
       onBack={handleBack}
     >

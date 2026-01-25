@@ -9,6 +9,7 @@ P5-04: Hourly summarization prompt
 
 from datetime import datetime
 
+from src.core.config import get_user_profile
 from src.summarize.evidence import EvidenceAggregator, HourlyEvidence
 from src.summarize.keyframes import SelectedKeyframe
 
@@ -274,6 +275,59 @@ The current schema version is {SCHEMA_VERSION}. Include this in your response.
 """
 
 
+def get_user_profile_context() -> str:
+    """
+    Get user profile context to include in prompts.
+
+    Returns:
+        String with user profile info, or empty string if no profile set.
+    """
+    profile = get_user_profile()
+
+    # Check if any profile fields are set
+    has_profile = any(
+        profile.get(key) for key in ["name", "age", "interests", "languages", "additional_info"]
+    )
+
+    if not has_profile:
+        return ""
+
+    lines = ["## User Profile", ""]
+
+    if profile.get("name"):
+        lines.append(f"- Name: {profile['name']}")
+    if profile.get("age"):
+        lines.append(f"- Age: {profile['age']}")
+    if profile.get("interests"):
+        lines.append(f"- Interests & Hobbies: {profile['interests']}")
+    if profile.get("languages"):
+        lines.append(f"- Languages: {profile['languages']}")
+    if profile.get("additional_info"):
+        lines.append(f"- Additional Context: {profile['additional_info']}")
+
+    lines.append("")
+    lines.append(
+        "Use this profile information to personalize the summary and better understand the user's activities in context of their interests and background."
+    )
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def build_hourly_system_prompt() -> str:
+    """
+    Build the hourly system prompt with user profile context if available.
+
+    Returns:
+        Complete system prompt string.
+    """
+    profile_context = get_user_profile_context()
+
+    if profile_context:
+        return HOURLY_SYSTEM_PROMPT + "\n" + profile_context
+    return HOURLY_SYSTEM_PROMPT
+
+
 def build_hourly_user_prompt(
     evidence: HourlyEvidence,
     keyframes: list[SelectedKeyframe] | None = None,
@@ -401,7 +455,7 @@ def build_vision_messages(
     """
     import base64
 
-    messages = [{"role": "system", "content": HOURLY_SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": build_hourly_system_prompt()}]
 
     # Build user content with images
     user_content = []

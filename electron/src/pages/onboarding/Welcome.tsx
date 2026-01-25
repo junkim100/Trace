@@ -122,7 +122,7 @@ export const Welcome: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <OnboardingLayout currentStep={1} totalSteps={4}>
+    <OnboardingLayout currentStep={1} totalSteps={5}>
       <h1 style={styles.logo}>TRACE</h1>
       <p style={styles.tagline}>Your digital activity, organized and searchable</p>
 

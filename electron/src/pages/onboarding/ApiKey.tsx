@@ -191,7 +191,7 @@ export const ApiKey: React.FC = () => {
   };
 
   const handleBack = () => {
-    navigate('/permissions');
+    navigate('/onboarding/profile');
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -215,7 +215,7 @@ export const ApiKey: React.FC = () => {
   };
 
   return (
-    <OnboardingLayout currentStep={3} totalSteps={4} showBack onBack={handleBack}>
+    <OnboardingLayout currentStep={4} totalSteps={5} showBack onBack={handleBack}>
       <h1 style={styles.title}>Connect to OpenAI</h1>
       <p style={styles.subtitle}>
         Trace uses OpenAI&apos;s API to analyze your activity<br />

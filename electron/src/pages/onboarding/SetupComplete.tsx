@@ -141,7 +141,7 @@ export const SetupComplete: React.FC = () => {
   };
 
   return (
-    <OnboardingLayout currentStep={4} totalSteps={4}>
+    <OnboardingLayout currentStep={5} totalSteps={5}>
       {showConfetti && (
         <div style={styles.confetti}>
           {/* Simple confetti effect using CSS */}
