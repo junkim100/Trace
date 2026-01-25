@@ -44,8 +44,21 @@ function Home() {
             // Pass flag indicating this is an upgrade (API key already exists)
             navigate('/permissions', { state: { isUpgrade: true } });
           } else {
-            // All good - go to chat
-            navigate('/chat');
+            // Check if user profile exists
+            const profile = await window.traceAPI.settings.get('user_profile') as {
+              name?: string;
+              interests?: string;
+            } | null;
+
+            const hasProfile = profile && (profile.name || profile.interests);
+
+            if (!hasProfile) {
+              // No profile yet - show profile setup
+              navigate('/onboarding/profile');
+            } else {
+              // All good - go to chat
+              navigate('/chat');
+            }
           }
         }
       } catch (err) {

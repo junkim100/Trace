@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { OnboardingLayout } from './OnboardingLayout';
 
@@ -165,9 +165,33 @@ export const UserProfile: React.FC = () => {
   });
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+
+  // Check if user already has API key (returning user)
+  useEffect(() => {
+    const checkApiKey = async () => {
+      try {
+        const settings = await window.traceAPI.settings.get();
+        setHasApiKey(settings.has_api_key);
+      } catch {
+        // Ignore errors
+      }
+    };
+    checkApiKey();
+  }, []);
 
   const handleChange = (key: string, value: string) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const navigateNext = () => {
+    if (hasApiKey) {
+      // Returning user - go to chat
+      navigate('/chat');
+    } else {
+      // New user - go to API key setup
+      navigateNext();
+    }
   };
 
   const handleContinue = async () => {
@@ -179,18 +203,18 @@ export const UserProfile: React.FC = () => {
           await window.traceAPI.settings.set(`user_profile.${key}`, value.trim());
         }
       }
-      navigate('/onboarding/api-key');
+      navigateNext();
     } catch (err) {
       console.error('Failed to save profile:', err);
       // Still navigate even if save fails - it's optional
-      navigate('/onboarding/api-key');
+      navigateNext();
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleSkip = () => {
-    navigate('/onboarding/api-key');
+    navigateNext();
   };
 
   const handleBack = () => {
