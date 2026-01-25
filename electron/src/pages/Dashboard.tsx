@@ -344,6 +344,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0 1rem',
     gap: '1rem',
     borderBottom: '1px solid var(--border)',
+    minHeight: '52px',
   },
   backButton: {
     backgroundColor: 'transparent',

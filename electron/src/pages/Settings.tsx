@@ -276,7 +276,7 @@ export function Settings() {
   if (loading) {
     return (
       <div style={styles.container}>
-        <div className="titlebar" />
+        <div className="titlebar" style={styles.titlebar} />
         <main style={styles.main}>
           <div style={styles.loading}>Loading settings...</div>
         </main>
@@ -286,7 +286,7 @@ export function Settings() {
 
   return (
     <div style={styles.container}>
-      <div className="titlebar" />
+      <div className="titlebar" style={styles.titlebar} />
       <main style={styles.main}>
         <div style={styles.header}>
           <button onClick={() => navigate(-1)} style={styles.backButton}>
@@ -361,7 +361,7 @@ export function Settings() {
                   checked={settings?.config.appearance.show_in_dock ?? false}
                   onChange={(e) => handleSettingChange('appearance.show_in_dock', e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span style={styles.switchSlider}></span>
               </label>
             </div>
           </div>
@@ -377,7 +377,7 @@ export function Settings() {
                   checked={settings?.config.appearance.launch_at_login ?? true}
                   onChange={(e) => handleSettingChange('appearance.launch_at_login', e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span style={styles.switchSlider}></span>
               </label>
             </div>
           </div>
@@ -397,7 +397,7 @@ export function Settings() {
                   checked={settings?.config.capture.power_saving_enabled ?? true}
                   onChange={(e) => handleSettingChange('capture.power_saving_enabled', e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span style={styles.switchSlider}></span>
               </label>
             </div>
           </div>
@@ -537,7 +537,7 @@ export function Settings() {
                   checked={settings?.config.notifications.weekly_digest_enabled ?? true}
                   onChange={(e) => handleSettingChange('notifications.weekly_digest_enabled', e.target.checked)}
                 />
-                <span style={styles.slider}></span>
+                <span style={styles.switchSlider}></span>
               </label>
             </div>
           </div>
@@ -865,6 +865,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
   },
+  titlebar: {
+    minHeight: '52px',
+  },
   main: {
     flex: 1,
     padding: '2rem',
@@ -1006,7 +1009,7 @@ const styles: Record<string, React.CSSProperties> = {
     height: '24px',
     flexShrink: 0,
   },
-  slider: {
+  switchSlider: {
     position: 'absolute',
     cursor: 'pointer',
     top: 0,

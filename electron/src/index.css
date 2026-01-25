@@ -28,10 +28,10 @@ body {
   flex-direction: column;
 }
 
-/* macOS window drag region */
+/* macOS window drag region - 52px provides clearance for traffic lights */
 .titlebar {
   -webkit-app-region: drag;
-  height: 38px;
+  min-height: 52px;
   background: transparent;
 }
 

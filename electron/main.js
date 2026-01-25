@@ -1006,20 +1006,7 @@ function createTray() {
   ]);
 
   tray.setContextMenu(contextMenu);
-
-  // Click on tray icon shows/hides window
-  tray.on('click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-      }
-    } else {
-      createWindow();
-    }
-  });
+  // Note: No click handler - window only opens via "Show Trace" context menu item
 }
 
 // Cache for recent notes and activity status

@@ -66,7 +66,7 @@ function Home() {
 
   return (
     <div style={styles.container}>
-      <div className="titlebar" />
+      <div className="titlebar" style={styles.titlebar} />
       <main style={styles.main}>
         <h1 style={styles.logoText}>TRACE</h1>
         <p style={styles.subtitle}>
@@ -93,6 +93,9 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     minHeight: '100vh',
     backgroundColor: 'var(--bg-primary)',
+  },
+  titlebar: {
+    minHeight: '52px',
   },
   main: {
     flex: 1,

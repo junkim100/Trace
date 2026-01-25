@@ -179,6 +179,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'flex-end',
     alignItems: 'center',
     padding: '0 1rem',
+    minHeight: '52px',
   },
   titlebarSpacer: {
     flex: 1,
