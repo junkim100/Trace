@@ -189,10 +189,24 @@ MVP delivers:
 | P12-02 | Weekly digest | `src/insights/digest.py`, `src/platform/notifications.py` | Automated weekly summary notification | [x] |
 | P12-03 | Pattern detection | `src/insights/patterns.py` | Surface productivity patterns ("You code best in mornings") | [x] |
 
-### Phase 13: Future Platform Expansion
+### Phase 13: Quality & Robustness Improvements
 
 | ID | Description | Files/Modules | Acceptance Criteria | Status |
 |----|-------------|---------------|---------------------|--------|
-| P13-01 | iOS companion app | `ios/` | Read-only app for querying notes on mobile | [ ] |
-| P13-02 | iCloud sync | `src/sync/icloud.py` | Optional sync of notes (not raw data) across devices | [ ] |
-| P13-03 | Data retention policies | `src/core/retention.py`, `electron/src/pages/Settings.tsx` | Configurable auto-deletion of old notes (e.g., keep 1 year) | [ ] |
+| P13-01 | Database performance indexes | `src/db/schema.sql`, `src/db/migrations/` | Add indexes on entity_type, note_entities composite, jobs status | [ ] |
+| P13-02 | Firefox/Edge/Brave URL capture | `src/capture/urls.py` | Extend URL capture to Firefox, Edge, and Brave browsers | [ ] |
+| P13-03 | Error feedback UI | `electron/src/components/` | Loading states, error messages, and retry options in chat UI | [ ] |
+| P13-04 | Offline/fallback mode | `src/core/queue.py`, `src/jobs/` | Queue operations when API unavailable, process when back online | [ ] |
+| P13-05 | Power saving mode | `src/capture/daemon.py`, `electron/src/pages/Settings.tsx` | Reduce capture frequency when on battery power | [ ] |
+| P13-06 | Configurable deduplication threshold | `src/capture/dedup.py`, `electron/src/pages/Settings.tsx` | User-configurable similarity threshold in Settings | [ ] |
+| P13-07 | JPEG quality configuration | `src/capture/screenshots.py`, `electron/src/pages/Settings.tsx` | Configurable JPEG quality for screenshot compression | [ ] |
+| P13-08 | Model selection UI | `electron/src/pages/Settings.tsx`, `src/core/llm.py` | Allow users to choose between available OpenAI models | [ ] |
+| P13-09 | Connection pooling | `src/db/connection.py` | Implement database connection pooling for better performance | [ ] |
+
+### Phase 14: Future Platform Expansion
+
+| ID | Description | Files/Modules | Acceptance Criteria | Status |
+|----|-------------|---------------|---------------------|--------|
+| P14-01 | iOS companion app | `ios/` | Read-only app for querying notes on mobile | [ ] |
+| P14-02 | iCloud sync | `src/sync/icloud.py` | Optional sync of notes (not raw data) across devices | [ ] |
+| P14-03 | Data retention policies | `src/core/retention.py`, `electron/src/pages/Settings.tsx` | Configurable auto-deletion of old notes (e.g., keep 1 year) | [ ] |
