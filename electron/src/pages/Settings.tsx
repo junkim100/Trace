@@ -1332,7 +1332,8 @@ styleTag.textContent = `
     height: 0;
   }
   .settings-switch input:checked + span {
-    background-color: var(--accent);
+    background-color: #34c759;
+    border-color: #34c759;
   }
   .settings-switch span:before {
     position: absolute;

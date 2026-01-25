@@ -137,6 +137,17 @@ button:not(:disabled):hover {
   filter: brightness(1.1);
 }
 
+/* Remove focus outline on buttons and interactive elements */
+button:focus,
+button:focus-visible {
+  outline: none;
+}
+
+/* Remove focus outline on all focusable elements */
+*:focus {
+  outline: none;
+}
+
 /* Input focus states */
 input:focus,
 textarea:focus {
