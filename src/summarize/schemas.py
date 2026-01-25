@@ -252,9 +252,6 @@ class HourlySummarySchema(BaseModel):
     co_activities: list[CoActivityItem] = Field(
         default_factory=list, description="Overlapping activities"
     )
-    open_loops: list[str] = Field(
-        default_factory=list, description="Incomplete tasks or follow-ups"
-    )
     location: str | None = Field(None, description="Location if known")
 
     @model_validator(mode="before")
@@ -289,7 +286,6 @@ class HourlySummarySchema(BaseModel):
                 "documents",
                 "websites",
                 "co_activities",
-                "open_loops",
             ]
             for field in list_fields:
                 if field not in data or data[field] is None:
@@ -454,7 +450,6 @@ def generate_empty_summary(
         documents=[],
         websites=[],
         co_activities=[],
-        open_loops=[],
         location=None,
     )
 
@@ -499,7 +494,6 @@ if __name__ == "__main__":
                     "documents": [],
                     "websites": [{"domain": "github.com", "purpose": "Code review"}],
                     "co_activities": [],
-                    "open_loops": [],
                     "location": None,
                 }
             )

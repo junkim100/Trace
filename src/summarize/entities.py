@@ -532,7 +532,6 @@ if __name__ == "__main__":
             ],
             websites=[{"domain": "docs.python.org", "purpose": "Documentation"}],
             co_activities=[],
-            open_loops=[],
             location=None,
         )
 

@@ -140,7 +140,6 @@ Output Requirements:
 - documents: files read/edited
 - websites: significant visits
 - co_activities: overlapping activities
-- open_loops: incomplete tasks
 - location: geographic if known
 
 Guidelines:
@@ -216,7 +215,6 @@ def calculate_metrics():
   "co_activities": [
     {"primary": "Coding", "secondary": "Listening to music", "relationship": "worked_while"}
   ],
-  "open_loops": [],
   "location": "Home Office"
 }
 ```
@@ -232,7 +230,6 @@ def calculate_metrics():
 - Summaries and categories
 - Entities and topics
 - Activities and media
-- Open loops
 
 **System Prompt** (abbreviated):
 ```
@@ -301,7 +298,6 @@ Edge types:
     "topics": [{"name": "Python", "total_minutes": 180}],
     "apps": [{"name": "Visual Studio Code", "total_minutes": 240}]
   },
-  "open_loops": ["Reply to client email"],
   "patterns": ["Deep work in morning hours", "Context switching after lunch"]
 }
 ```

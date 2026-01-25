@@ -82,7 +82,6 @@ def test_schema_validation():
         "co_activities": [
             {"primary": "Coding", "secondary": "Listening to music", "relationship": "worked_while"}
         ],
-        "open_loops": ["Need to fix flaky test"],
         "location": "Home office",
     }
 
@@ -388,7 +387,6 @@ def test_markdown_renderer():
         documents=[],
         websites=[{"domain": "github.com", "purpose": "Code review"}],
         co_activities=[],
-        open_loops=["Review PR #42"],
         location="Home",
     )
 
@@ -477,7 +475,6 @@ def test_entity_extraction():
             documents=[{"name": "daemon.py", "type": "code"}],
             websites=[{"domain": "github.com"}],
             co_activities=[],
-            open_loops=[],
         )
 
         links = extractor.extract_and_store(summary, note_id)
@@ -556,7 +553,6 @@ def test_embedding_computation():
         documents=[],
         websites=[],
         co_activities=[],
-        open_loops=[],
         location=None,
     )
 
@@ -636,7 +632,6 @@ def test_full_pipeline_mock():
                 "relationship": "worked_while",
             }
         ],
-        "open_loops": ["Need to implement multi-monitor support"],
         "location": "Home office",
     }
 

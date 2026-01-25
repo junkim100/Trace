@@ -7,7 +7,6 @@ import src.trace_app.ipc.dashboard_handlers  # noqa: F401
 import src.trace_app.ipc.digest_handlers  # noqa: F401
 import src.trace_app.ipc.export_handlers  # noqa: F401
 import src.trace_app.ipc.graph_handlers  # noqa: F401
-import src.trace_app.ipc.open_loops_handlers  # noqa: F401
 import src.trace_app.ipc.patterns_handlers  # noqa: F401
 import src.trace_app.ipc.permissions_handlers  # noqa: F401
 import src.trace_app.ipc.service_handlers  # noqa: F401

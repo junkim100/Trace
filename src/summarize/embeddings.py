@@ -410,7 +410,6 @@ if __name__ == "__main__":
             documents=[],
             websites=[],
             co_activities=[],
-            open_loops=[],
             location=None,
         )
 

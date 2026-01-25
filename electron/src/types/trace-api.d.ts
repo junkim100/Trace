@@ -527,57 +527,6 @@ export interface GraphAPI {
   getEntityDetails(entityId: string): Promise<EntityDetailsResponse>;
 }
 
-/** Open loop entry */
-export interface OpenLoop {
-  loop_id: string;
-  description: string;
-  source_note_id: string;
-  source_note_path: string;
-  detected_at: string;
-  context: string | null;
-  completed: boolean;
-}
-
-/** Open loops list response */
-export interface OpenLoopsListResponse {
-  success: boolean;
-  loops: OpenLoop[];
-  count: number;
-  error?: string;
-}
-
-/** Open loops summary response */
-export interface OpenLoopsSummaryResponse {
-  success: boolean;
-  total_count: number;
-  today_count: number;
-  this_week_count: number;
-  days_with_loops: number;
-  recent_loops: Array<{
-    loop_id: string;
-    description: string;
-    source_note_id: string;
-    detected_at: string;
-    context: string | null;
-  }>;
-  error?: string;
-}
-
-/** Open loops list options */
-export interface OpenLoopsListOptions {
-  daysBack?: number;
-  limit?: number;
-}
-
-/** Open Loops API methods */
-export interface OpenLoopsAPI {
-  /** List open loops from recent notes */
-  list(options?: OpenLoopsListOptions): Promise<OpenLoopsListResponse>;
-
-  /** Get open loops summary */
-  summary(): Promise<OpenLoopsSummaryResponse>;
-}
-
 /** Blocklist entry */
 export interface BlocklistEntry {
   blocklist_id: string;
@@ -863,9 +812,6 @@ export interface TraceAPI {
 
   /** Graph API */
   graph: GraphAPI;
-
-  /** Open Loops API */
-  openLoops: OpenLoopsAPI;
 
   /** Spotlight API */
   spotlight: SpotlightAPI;

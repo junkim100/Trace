@@ -191,14 +191,6 @@ class DailyNoteGenerator:
                 lines.append(f"- {pattern}")
             lines.append("")
 
-        # Open loops
-        if revision.open_loops:
-            lines.append("## Open Loops")
-            lines.append("")
-            for loop in revision.open_loops:
-                lines.append(f"- [ ] {loop}")
-            lines.append("")
-
         # Hourly breakdown
         if revision.hourly_revisions:
             lines.append("## Hourly Breakdown")
@@ -256,9 +248,6 @@ class DailyNoteGenerator:
 
         # Accomplishments count
         lines.append(f"accomplishments_count: {len(revision.accomplishments)}")
-
-        # Open loops count
-        lines.append(f"open_loops_count: {len(revision.open_loops)}")
 
         # Hours covered
         lines.append(f"hours_covered: {len(revision.hourly_revisions)}")
@@ -468,11 +457,6 @@ if __name__ == "__main__":
                     TopEntityItem(name="Lofi Girl - Study Beats", type="track", total_minutes=120),
                 ],
             ),
-            open_loops=[
-                "Finish unit tests for normalization module",
-                "Review PR #42",
-                "Update documentation",
-            ],
             patterns=[
                 "Most productive during morning hours (9-12)",
                 "Deep work sessions averaged 90 minutes",

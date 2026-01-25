@@ -307,20 +307,6 @@ contextBridge.exposeInMainWorld('traceAPI', {
       ipcRenderer.invoke('python:call', 'graph.entity_details', { entity_id: entityId }),
   },
 
-  // Open loops methods (for incomplete tasks tracking)
-  openLoops: {
-    // List open loops from recent notes
-    list: (options = {}) =>
-      ipcRenderer.invoke('python:call', 'openloops.list', {
-        days_back: options.daysBack ?? 7,
-        limit: options.limit ?? 50,
-      }),
-
-    // Get open loops summary
-    summary: () =>
-      ipcRenderer.invoke('python:call', 'openloops.summary', {}),
-  },
-
   // Spotlight integration methods
   spotlight: {
     // Get Spotlight indexing status

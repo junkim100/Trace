@@ -96,7 +96,6 @@ HOURLY_SCHEMA_DESCRIPTION = """
       "relationship": "studied_while|worked_while|browsed_while"
     }
   ],
-  "open_loops": ["Things mentioned but not completed"],
   "location": "Location if known, null otherwise"
 }
 """
@@ -213,8 +212,6 @@ You MUST respond with valid JSON conforming to this schema:
 9. **Websites**: Record significant website visits with purpose.
 
 10. **Co-activities**: Identify overlapping activities (e.g., "studied machine learning while listening to Spotify").
-
-11. **Open Loops**: Note any incomplete tasks or items that might need follow-up.
 
 ## Detecting User Intent
 

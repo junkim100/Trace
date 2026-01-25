@@ -62,7 +62,6 @@ DAILY_SCHEMA_DESCRIPTION = """
     "domains": [{"name": "...", "total_minutes": 123}],
     "media": [{"name": "...", "type": "track|video", "total_minutes": 123}]
   },
-  "open_loops": ["Consolidated list of incomplete tasks from all hours"],
   "patterns": ["Observed patterns in the day's activities"],
   "location_summary": "Summary of locations visited during the day"
 }
@@ -274,13 +273,6 @@ def build_daily_user_prompt(
                     f"**Co-activity**: {co.get('primary', '')} while {co.get('secondary', '')}"
                 )
 
-        # Open loops
-        open_loops = summary.get("open_loops", [])
-        if open_loops:
-            lines.append("**Open Loops**:")
-            for loop in open_loops:
-                lines.append(f"- [ ] {loop}")
-
         # Location
         location = summary.get("location")
         if location:
@@ -299,8 +291,7 @@ def build_daily_user_prompt(
     lines.append("3. Normalize entities that refer to the same thing")
     lines.append("4. Identify graph edges between entities")
     lines.append("5. Calculate top entities by time spent")
-    lines.append("6. Consolidate open loops from all hours")
-    lines.append("7. Identify patterns in the day's activities")
+    lines.append("6. Identify patterns in the day's activities")
     lines.append("")
     lines.append("Respond with valid JSON following the schema in the system prompt.")
 
@@ -367,7 +358,6 @@ if __name__ == "__main__":
                     "documents": [],
                     "websites": [],
                     "co_activities": [],
-                    "open_loops": ["Reply to client email"],
                     "location": "Home Office",
                 },
             },
@@ -414,7 +404,6 @@ if __name__ == "__main__":
                             "relationship": "worked_while",
                         }
                     ],
-                    "open_loops": [],
                     "location": "Home Office",
                 },
             },

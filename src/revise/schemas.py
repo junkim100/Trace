@@ -140,7 +140,6 @@ class DailyRevisionSchema(BaseModel):
     top_entities: TopEntitiesSection = Field(
         default_factory=TopEntitiesSection, description="Top entities by time"
     )
-    open_loops: list[str] = Field(default_factory=list, description="Consolidated open loops")
     patterns: list[str] = Field(default_factory=list, description="Observed patterns")
     location_summary: str | None = Field(None, description="Location summary")
 
@@ -176,7 +175,6 @@ class DailyRevisionSchema(BaseModel):
                 "hourly_revisions",
                 "entity_normalizations",
                 "graph_edges",
-                "open_loops",
                 "patterns",
             ]
             for field in list_fields:
@@ -333,7 +331,6 @@ def generate_empty_daily_revision(
         entity_normalizations=[],
         graph_edges=[],
         top_entities=TopEntitiesSection(),
-        open_loops=[],
         patterns=[],
         location_summary=None,
     )
@@ -403,7 +400,6 @@ if __name__ == "__main__":
                         "domains": [{"name": "github.com", "total_minutes": 45}],
                         "media": [],
                     },
-                    "open_loops": ["Finish unit tests"],
                     "patterns": ["Morning deep work sessions are most productive"],
                     "location_summary": "Home office all day",
                 }

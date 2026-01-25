@@ -35,7 +35,6 @@ def _register_handlers() -> None:
         digest_handlers,
         export_handlers,
         graph_handlers,
-        open_loops_handlers,
         patterns_handlers,
         permissions_handlers,
         service_handlers,

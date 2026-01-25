@@ -210,14 +210,6 @@ class MarkdownRenderer:
                 lines.append(f"- {co.primary} while {co.secondary}")
             lines.append("")
 
-        # Open loops section
-        if summary.open_loops:
-            lines.append("## Open Loops")
-            lines.append("")
-            for loop in summary.open_loops:
-                lines.append(f"- [ ] {loop}")
-            lines.append("")
-
         # Location footer
         loc = location or summary.location
         if loc:
@@ -436,10 +428,6 @@ if __name__ == "__main__":
                     "secondary": "Listening to lo-fi beats",
                     "relationship": "worked_while",
                 }
-            ],
-            open_loops=[
-                "Need to finish the schema migration tests",
-                "Review the edge case handling",
             ],
             location="San Francisco, CA",
         )

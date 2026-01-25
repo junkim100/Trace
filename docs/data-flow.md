@@ -230,7 +230,7 @@ Event 1: Safari (14:00-14:05)  Event 2: VS Code (14:05-14:15)
 │  │ HourlySummarySchema (JSON)                            │  │
 │  │   summary, categories, activities, topics,            │  │
 │  │   entities, media, documents, websites,               │  │
-│  │   co_activities, open_loops, location                 │  │
+│  │   co_activities, location                             │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
