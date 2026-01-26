@@ -207,6 +207,9 @@ def delete_hourly_screenshot_dir(dt: datetime) -> bool:
     Delete the screenshot directory for a specific hour.
 
     This should be called after successfully creating the hourly note.
+    Handles both:
+    - New structure: screenshots/YYYYMMDD/HH/
+    - Legacy structure: screenshots/YYYYMMDD/ (files with HHMMSS timestamp prefix)
 
     Args:
         dt: The datetime for the hour to clean up
@@ -215,25 +218,52 @@ def delete_hourly_screenshot_dir(dt: datetime) -> bool:
         True if deleted successfully, False otherwise
     """
     dir_path = get_hourly_screenshot_dir(dt)
+    date_str = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}"
+    hour_prefix = f"{dt.hour:02d}"
+    date_dir = SCREENSHOTS_CACHE_DIR / date_str
+    deleted_count = 0
 
-    if not dir_path.exists():
-        logger.debug(f"Screenshot directory does not exist: {dir_path}")
-        return True
+    # 1. Delete hourly subdirectory if it exists (new structure)
+    if dir_path.exists():
+        try:
+            shutil.rmtree(dir_path)
+            logger.info(f"Deleted hourly screenshot directory: {dir_path}")
+            deleted_count += 1
+        except Exception as e:
+            logger.error(f"Failed to delete screenshot directory {dir_path}: {e}")
+            return False
 
-    try:
-        shutil.rmtree(dir_path)
-        logger.info(f"Deleted hourly screenshot directory: {dir_path}")
+    # 2. Delete screenshots in parent date folder with matching hour prefix (legacy structure)
+    # Screenshot filenames are: HHMMSSMMM_m{monitor}_{hash}.jpg
+    if date_dir.exists():
+        try:
+            for file_path in date_dir.iterdir():
+                if file_path.is_file() and file_path.suffix.lower() in (".jpg", ".jpeg", ".png"):
+                    # Check if filename starts with the hour prefix (HH)
+                    filename = file_path.name
+                    if filename[:2] == hour_prefix:
+                        file_path.unlink()
+                        deleted_count += 1
+            if deleted_count > 1:  # More than just the directory
+                logger.info(
+                    f"Deleted {deleted_count - 1} legacy screenshots for hour {hour_prefix}"
+                )
+        except Exception as e:
+            logger.error(f"Failed to delete legacy screenshots: {e}")
+            return False
 
-        # Check if the parent date directory is now empty, and delete it too
-        date_dir = dir_path.parent
-        if date_dir.exists() and not any(date_dir.iterdir()):
-            date_dir.rmdir()
-            logger.info(f"Deleted empty date directory: {date_dir}")
+    # 3. Check if the date directory is now empty, and delete it too
+    if date_dir.exists():
+        # Check if only .DS_Store remains (or truly empty)
+        remaining = [f for f in date_dir.iterdir() if f.name != ".DS_Store"]
+        if not remaining:
+            try:
+                shutil.rmtree(date_dir)
+                logger.info(f"Deleted empty date directory: {date_dir}")
+            except Exception as e:
+                logger.warning(f"Could not delete date directory: {e}")
 
-        return True
-    except Exception as e:
-        logger.error(f"Failed to delete screenshot directory {dir_path}: {e}")
-        return False
+    return True
 
 
 def get_all_screenshot_hours() -> list[datetime]:
