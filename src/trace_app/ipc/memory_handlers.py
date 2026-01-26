@@ -368,3 +368,150 @@ def handle_is_empty(params: dict[str, Any]) -> dict[str, Any]:
         "success": True,
         "is_empty": is_memory_empty(),
     }
+
+
+@handler("memory.clear")
+def handle_clear_memory(params: dict[str, Any]) -> dict[str, Any]:
+    """Clear all memory data.
+
+    Returns:
+        Success status.
+    """
+    from src.memory.onboarding import clear_memory
+
+    success = clear_memory()
+    return {"success": success}
+
+
+@handler("memory.get_summary")
+def handle_get_summary(params: dict[str, Any]) -> dict[str, Any]:
+    """Get a brief summary of current memory.
+
+    Returns:
+        Summary string.
+    """
+    from src.memory.onboarding import get_memory_summary
+
+    return {
+        "success": True,
+        "summary": get_memory_summary(),
+    }
+
+
+# =============================================================================
+# Onboarding Chat Handlers
+# =============================================================================
+
+
+@handler("onboarding.start")
+def handle_onboarding_start(params: dict[str, Any]) -> dict[str, Any]:
+    """Start the onboarding conversation.
+
+    Params:
+        mode: 'initial', 'update', or 'restart'
+
+    Returns:
+        Initial message and state.
+    """
+    from src.memory.onboarding import OnboardingChatService
+
+    mode = params.get("mode", "initial")
+
+    try:
+        service = OnboardingChatService()
+        result = service.get_initial_message(mode=mode)
+        return {
+            "success": True,
+            "message": result["message"],
+            "phase": result["phase"],
+            "extracted": result["extracted"],
+        }
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception("Failed to start onboarding")
+        return {"success": False, "error": f"Failed to start onboarding: {e}"}
+
+
+@handler("onboarding.chat")
+def handle_onboarding_chat(params: dict[str, Any]) -> dict[str, Any]:
+    """Process a message in the onboarding conversation.
+
+    Params:
+        phase: Current conversation phase
+        message: User's message
+        history: List of previous messages [{role, content}]
+        extracted: Already extracted information
+        mode: 'initial', 'update', or 'restart'
+
+    Returns:
+        Response, updated extraction, and state changes.
+    """
+    from src.memory.onboarding import OnboardingChatService
+
+    phase = params.get("phase", "greeting")
+    message = params.get("message", "").strip()
+    history = params.get("history", [])
+    extracted = params.get("extracted", {})
+    mode = params.get("mode", "initial")
+
+    if not message:
+        return {"success": False, "error": "message parameter is required"}
+
+    try:
+        service = OnboardingChatService()
+        result = service.process_message(
+            phase=phase,
+            user_message=message,
+            history=history,
+            extracted_so_far=extracted,
+            mode=mode,
+        )
+        return {
+            "success": True,
+            "response": result["response"],
+            "phase": result["phase"],
+            "extracted": result["extracted"],
+            "should_advance": result["should_advance"],
+            "completion_detected": result["completion_detected"],
+            "is_ready_to_continue": result["is_ready_to_continue"],
+        }
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception("Failed to process onboarding message")
+        return {"success": False, "error": f"Failed to process message: {e}"}
+
+
+@handler("onboarding.finalize")
+def handle_onboarding_finalize(params: dict[str, Any]) -> dict[str, Any]:
+    """Finalize the onboarding and save to memory.
+
+    Params:
+        history: Full conversation history
+        extracted: Extracted information
+
+    Returns:
+        Success status and summary.
+    """
+    from src.memory.onboarding import OnboardingChatService
+
+    history = params.get("history", [])
+    extracted = params.get("extracted", {})
+
+    if not history:
+        return {"success": False, "error": "history parameter is required"}
+
+    try:
+        service = OnboardingChatService()
+        result = service.finalize_and_save(history=history, extracted=extracted)
+        return {
+            "success": True,
+            "items_added": result["items_added"],
+            "summary": result["summary"],
+        }
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception("Failed to finalize onboarding")
+        return {"success": False, "error": f"Failed to finalize: {e}"}

@@ -28,7 +28,7 @@ export function Settings() {
   // App version
   const [appVersion, setAppVersion] = useState<string>('');
 
-  // User profile state
+  // User profile state (legacy - keeping for migration)
   const [userProfile, setUserProfile] = useState({
     name: '',
     age: '',
@@ -37,6 +37,11 @@ export function Settings() {
     additional_info: '',
   });
   const [profileSaving, setProfileSaving] = useState(false);
+
+  // Memory state
+  const [memorySummary, setMemorySummary] = useState<string>('');
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
   // Export state
   const [exportLoading, setExportLoading] = useState(false);
@@ -79,6 +84,20 @@ export function Settings() {
       }
     } catch (err) {
       console.error('Failed to load installed apps:', err);
+    }
+  };
+
+  const loadMemorySummary = async () => {
+    setMemoryLoading(true);
+    try {
+      const result = await window.traceAPI.onboarding.getSummary();
+      if (result.success && result.summary) {
+        setMemorySummary(result.summary);
+      }
+    } catch (err) {
+      console.error('Failed to load memory summary:', err);
+    } finally {
+      setMemoryLoading(false);
     }
   };
 
@@ -133,6 +152,7 @@ export function Settings() {
     loadBlocklist();
     loadExportSummary();
     loadInstalledApps();
+    loadMemorySummary();
 
     // Load app version
     window.traceAPI.getVersion().then(setAppVersion).catch(() => {});
@@ -483,68 +503,73 @@ export function Settings() {
         </section>
 
         <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Your Profile</h2>
+          <h2 style={styles.sectionTitle}>Memory & Personalization</h2>
           <p style={styles.description}>
-            This information helps personalize your activity notes.
+            Trace learns about you through conversations to personalize your experience.
           </p>
-          <div style={styles.field}>
-            <label style={styles.label}>Name</label>
-            <input
-              type="text"
-              value={userProfile.name}
-              onChange={(e) => handleProfileChange('name', e.target.value)}
-              placeholder="e.g., Alex Chen"
-              style={styles.profileInput}
-            />
+
+          {/* Memory summary */}
+          {memorySummary && (
+            <div style={styles.memorySummaryBox}>
+              <div style={styles.memorySummaryTitle}>What Trace knows about you:</div>
+              <div style={styles.memorySummaryContent}>
+                {memoryLoading ? 'Loading...' : memorySummary}
+              </div>
+            </div>
+          )}
+
+          {/* Memory action buttons */}
+          <div style={styles.memoryButtonsContainer}>
+            <button
+              onClick={() => navigate('/profile', { state: { mode: 'update' } })}
+              style={styles.memoryButton}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+              Update Memory
+            </button>
+            <button
+              onClick={() => setShowRestartConfirm(true)}
+              style={styles.memoryButtonSecondary}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M23 4v6h-6" />
+                <path d="M1 20v-6h6" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+              Restart Onboarding
+            </button>
           </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Age</label>
-            <input
-              type="text"
-              value={userProfile.age}
-              onChange={(e) => handleProfileChange('age', e.target.value)}
-              placeholder="e.g., 28"
-              style={styles.profileInput}
-            />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Interests & Hobbies</label>
-            <textarea
-              value={userProfile.interests}
-              onChange={(e) => handleProfileChange('interests', e.target.value)}
-              placeholder="e.g., software development, photography, hiking, cooking"
-              style={styles.profileTextarea}
-            />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Languages You Speak</label>
-            <input
-              type="text"
-              value={userProfile.languages}
-              onChange={(e) => handleProfileChange('languages', e.target.value)}
-              placeholder="e.g., English, Spanish, Mandarin"
-              style={styles.profileInput}
-            />
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Additional Info</label>
-            <textarea
-              value={userProfile.additional_info}
-              onChange={(e) => handleProfileChange('additional_info', e.target.value)}
-              placeholder="e.g., I work as a product manager at a tech startup, prefer working late at night"
-              style={styles.profileTextarea}
-            />
-          </div>
-          <button
-            onClick={handleSaveProfile}
-            disabled={profileSaving}
-            style={{
-              ...styles.saveButton,
-              ...(profileSaving ? styles.saveButtonDisabled : {}),
-            }}
-          >
-            {profileSaving ? 'Saving...' : 'Save Profile'}
-          </button>
+
+          {/* Restart confirmation dialog */}
+          {showRestartConfirm && (
+            <div style={styles.confirmDialog}>
+              <div style={styles.confirmDialogContent}>
+                <p style={styles.confirmText}>
+                  This will clear all your memory data and start the onboarding process from scratch. Are you sure?
+                </p>
+                <div style={styles.confirmButtons}>
+                  <button
+                    onClick={() => setShowRestartConfirm(false)}
+                    style={styles.confirmCancelButton}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowRestartConfirm(false);
+                      navigate('/profile', { state: { mode: 'restart' } });
+                    }}
+                    style={styles.confirmDangerButton}
+                  >
+                    Yes, Restart
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         <section style={styles.section}>
@@ -1837,6 +1862,103 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.8rem',
     color: 'var(--text-secondary)',
     marginTop: '0.25rem',
+  },
+  // Memory section styles
+  memorySummaryBox: {
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    padding: '1rem',
+    marginBottom: '1rem',
+  },
+  memorySummaryTitle: {
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: 'var(--text-primary)',
+    marginBottom: '0.5rem',
+  },
+  memorySummaryContent: {
+    fontSize: '0.85rem',
+    color: 'var(--text-secondary)',
+    lineHeight: 1.6,
+  },
+  memoryButtonsContainer: {
+    display: 'flex',
+    gap: '0.75rem',
+  },
+  memoryButton: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    padding: '0.875rem 1rem',
+    backgroundColor: 'var(--accent)',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'white',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  memoryButtonSecondary: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    padding: '0.875rem 1rem',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  confirmDialog: {
+    marginTop: '1rem',
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    border: '1px solid rgba(255, 59, 48, 0.3)',
+    borderRadius: '8px',
+    padding: '1rem',
+  },
+  confirmDialogContent: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '1rem',
+  },
+  confirmText: {
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  confirmButtons: {
+    display: 'flex',
+    gap: '0.5rem',
+    justifyContent: 'flex-end',
+  },
+  confirmCancelButton: {
+    padding: '0.5rem 1rem',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '6px',
+    fontSize: '0.85rem',
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+  },
+  confirmDangerButton: {
+    padding: '0.5rem 1rem',
+    backgroundColor: '#ff3b30',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '0.85rem',
+    fontWeight: 500,
+    color: 'white',
+    cursor: 'pointer',
   },
 };
 

@@ -1,6 +1,6 @@
 {
   "name": "trace",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "A macOS app that captures digital activity, generates Markdown notes, builds a relationship graph, and provides time-aware chat/search",
   "main": "main.js",
   "scripts": {
@@ -50,7 +50,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "hardenedRuntime": false,
@@ -76,7 +79,9 @@
       {
         "from": "python-dist",
         "to": "python-dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   },

@@ -955,6 +955,81 @@ export interface MemoryAPI {
 
   /** Migrate profile from config to MEMORY.md */
   migrateFromConfig(): Promise<{ success: boolean; migrated: boolean; message: string }>;
+
+  /** Check if memory is empty */
+  isEmpty(): Promise<{ success: boolean; is_empty: boolean }>;
+}
+
+/** Onboarding mode */
+export type OnboardingMode = 'initial' | 'update' | 'restart';
+
+/** Onboarding start response */
+export interface OnboardingStartResponse {
+  success: boolean;
+  message: string;
+  phase: string;
+  extracted: Record<string, unknown>;
+  error?: string;
+}
+
+/** Onboarding chat params */
+export interface OnboardingChatParams {
+  phase: string;
+  message: string;
+  history: Array<{ role: 'assistant' | 'user'; content: string }>;
+  extracted: Record<string, unknown>;
+  mode: OnboardingMode;
+}
+
+/** Onboarding chat response */
+export interface OnboardingChatResponse {
+  success: boolean;
+  response: string;
+  phase: string;
+  extracted: Record<string, unknown>;
+  should_advance: boolean;
+  completion_detected: boolean;
+  is_ready_to_continue: boolean;
+  error?: string;
+}
+
+/** Onboarding finalize params */
+export interface OnboardingFinalizeParams {
+  history: Array<{ role: 'assistant' | 'user'; content: string }>;
+  extracted: Record<string, unknown>;
+}
+
+/** Onboarding finalize response */
+export interface OnboardingFinalizeResponse {
+  success: boolean;
+  items_added: number;
+  summary: string;
+  error?: string;
+}
+
+/** Onboarding summary response */
+export interface OnboardingSummaryResponse {
+  success: boolean;
+  summary: string;
+  error?: string;
+}
+
+/** Onboarding API methods */
+export interface OnboardingAPI {
+  /** Start the onboarding conversation */
+  start(mode?: OnboardingMode): Promise<OnboardingStartResponse>;
+
+  /** Process a message in the onboarding conversation */
+  chat(params: OnboardingChatParams): Promise<OnboardingChatResponse>;
+
+  /** Finalize and save the onboarding to memory */
+  finalize(params: OnboardingFinalizeParams): Promise<OnboardingFinalizeResponse>;
+
+  /** Clear memory (for restart) */
+  clear(): Promise<MemoryOperationResponse>;
+
+  /** Get memory summary (for update mode) */
+  getSummary(): Promise<OnboardingSummaryResponse>;
 }
 
 export interface TraceAPI {
@@ -1026,6 +1101,9 @@ export interface TraceAPI {
 
   /** User memory API */
   memory: MemoryAPI;
+
+  /** Onboarding chat API */
+  onboarding: OnboardingAPI;
 }
 
 declare global {

@@ -44,16 +44,12 @@ function Home() {
             // Pass flag indicating this is an upgrade (API key already exists)
             navigate('/permissions', { state: { isUpgrade: true } });
           } else {
-            // Check if user profile exists
-            const profile = await window.traceAPI.settings.get('user_profile') as {
-              name?: string;
-              interests?: string;
-            } | null;
+            // Check if memory has been populated
+            const memoryResult = await window.traceAPI.memory.isEmpty();
+            const isMemoryEmpty = memoryResult.is_empty ?? true;
 
-            const hasProfile = profile && (profile.name || profile.interests);
-
-            if (!hasProfile) {
-              // No profile yet - show profile setup
+            if (isMemoryEmpty) {
+              // Memory is empty - show onboarding chat
               navigate('/onboarding/profile');
             } else {
               // All good - go to chat

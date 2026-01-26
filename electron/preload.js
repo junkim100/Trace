@@ -516,5 +516,29 @@ contextBridge.exposeInMainWorld('traceAPI', {
     // Migrate profile from config to MEMORY.md
     migrateFromConfig: () =>
       ipcRenderer.invoke('python:call', 'memory.migrate_from_config', {}),
+
+    // Check if memory is empty
+    isEmpty: () => ipcRenderer.invoke('python:call', 'memory.is_empty', {}),
+  },
+
+  // Onboarding chat methods
+  onboarding: {
+    // Start the onboarding conversation
+    start: (mode = 'initial') =>
+      ipcRenderer.invoke('python:call', 'onboarding.start', { mode }),
+
+    // Process a message in the onboarding conversation
+    chat: (params) =>
+      ipcRenderer.invoke('python:call', 'onboarding.chat', params),
+
+    // Finalize and save the onboarding to memory
+    finalize: (params) =>
+      ipcRenderer.invoke('python:call', 'onboarding.finalize', params),
+
+    // Clear memory (for restart)
+    clear: () => ipcRenderer.invoke('python:call', 'memory.clear', {}),
+
+    // Get memory summary (for update mode)
+    getSummary: () => ipcRenderer.invoke('python:call', 'memory.get_summary', {}),
   },
 });
