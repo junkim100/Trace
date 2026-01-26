@@ -14,14 +14,17 @@ from src.summarize.evidence import EvidenceAggregator, HourlyEvidence
 from src.summarize.keyframes import SelectedKeyframe
 
 # Schema version for output validation
-SCHEMA_VERSION = 2
+# v3: Added is_idle and idle_reason fields for AFK detection
+SCHEMA_VERSION = 3
 
 # Model for hourly summarization
 HOURLY_MODEL = "gpt-5-mini-2025-08-07"
 
 HOURLY_SCHEMA_DESCRIPTION = """
 {
-  "schema_version": 2,
+  "schema_version": 3,
+  "is_idle": false,
+  "idle_reason": "null or string explaining why user was detected as idle",
   "summary": "2-3 sentence overview of the hour's activities",
   "categories": ["list", "of", "activity", "categories"],
   "activities": [
@@ -269,6 +272,53 @@ Set requires_enrichment=true when additional context would be valuable:
 - Use exact timestamps from the evidence when available
 - Location should be geographic if known, null otherwise
 
+## CRITICAL: Idle/AFK Detection
+
+**You MUST detect when the user was idle/AFK (Away From Keyboard) and NOT fabricate activities.**
+
+### Idle Patterns to Detect:
+
+1. **Very few context changes**: Only 0-2 events for the entire hour, especially a single event spanning most/all of the hour
+2. **Identical screenshots**: Multiple screenshots showing the exact same static content (wallpaper, lock screen, same unchanged window)
+3. **Desktop/wallpaper screenshots**: Screenshots showing only the desktop wallpaper with no visible applications or user interaction
+4. **Lock screen**: Screenshots showing the macOS lock screen or login window
+5. **Screen saver**: Screenshots showing a screen saver
+6. **No meaningful interaction signals**: No URLs visited, no document changes, no media changes, no app switches
+7. **Single static app**: One app showing the same content for the entire hour with no progression
+
+### When Idle is Detected:
+
+If you detect idle patterns, you MUST:
+
+1. Set `"is_idle": true`
+2. Set `"idle_reason"` to a brief explanation (e.g., "Single event spanning 13 hours with screenshots showing only desktop wallpaper", "Lock screen visible for entire hour", "No context changes and all screenshots show same static desktop")
+3. Set `"summary"` to something like: "No significant activity detected. User was likely away from computer or screen was idle."
+4. Set `"categories"` to `["idle"]` or `[]`
+5. Set `"activities"` to empty `[]` or a single idle entry
+6. Set `"details"` to empty `[]`
+7. Set low confidence on any entities extracted
+
+### Common Idle Misinterpretations to AVOID:
+
+- **DO NOT** interpret wallpaper/desktop screenshots as "user customizing desktop" or "user admiring wallpaper"
+- **DO NOT** interpret a single long event (hours) as sustained focused work without other evidence
+- **DO NOT** fabricate activities from static screenshots showing no user interaction
+- **DO NOT** interpret System Settings/Preferences open for hours as "user configuring system" - this likely means the app was left open when user went AFK
+
+### Example Idle Scenario:
+
+Evidence: 1 event "System Settings - Desktop & Dock" spanning 02:14 to 15:21, 971 screenshots all showing the same NYC skyline wallpaper.
+
+**WRONG output:**
+```json
+{{"summary": "User spent the full hour in macOS System Settings focused on Desktop & Dock preferences, customizing their desktop wallpaper.", "categories": ["productivity", "system"], "is_idle": false}}
+```
+
+**CORRECT output:**
+```json
+{{"is_idle": true, "idle_reason": "Single event spanning 13+ hours with all screenshots showing static desktop wallpaper. No user interaction detected.", "summary": "No significant activity detected. User was likely away from computer.", "categories": ["idle"], "activities": [], "details": []}}
+```
+
 ## Schema Version
 
 The current schema version is {SCHEMA_VERSION}. Include this in your response.
@@ -420,12 +470,43 @@ def build_hourly_user_prompt(
         lines.append(f"## Location: {', '.join(evidence.locations)}")
         lines.append("")
 
-    # Statistics
+    # Statistics with idle detection hints
     lines.append("## Evidence Statistics")
-    lines.append(f"- Total events: {evidence.total_events}")
+    lines.append(f"- Total events (context switches): {evidence.total_events}")
     lines.append(f"- Total screenshots: {evidence.total_screenshots}")
     lines.append(f"- Text buffers: {evidence.total_text_buffers}")
     lines.append(f"- Selected keyframes: {len(keyframes) if keyframes else 0}")
+
+    # Add idle detection hints
+    if evidence.total_events <= 2:
+        lines.append("")
+        lines.append("⚠️ IDLE DETECTION HINT: Very few events detected (0-2 context switches).")
+        lines.append(
+            "   This may indicate the user was AFK/idle. Check if screenshots show static content."
+        )
+
+    # Calculate unique apps if events available
+    if evidence.events:
+        unique_apps = len({e.app_name for e in evidence.events if e.app_name})
+        if unique_apps <= 1:
+            lines.append("")
+            lines.append(
+                f"⚠️ IDLE DETECTION HINT: Only {unique_apps} unique app(s) for the entire hour."
+            )
+
+        # Check for single long event
+        for event in evidence.events:
+            if event.duration_seconds and event.duration_seconds > 3000:  # > 50 minutes
+                duration_min = event.duration_seconds // 60
+                lines.append("")
+                lines.append(
+                    f"⚠️ IDLE DETECTION HINT: Single event '{event.app_name}' spans {duration_min} minutes."
+                )
+                lines.append(
+                    "   Long single events often indicate user went AFK while app was in foreground."
+                )
+                break
+
     lines.append("")
 
     # Instructions
