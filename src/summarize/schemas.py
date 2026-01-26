@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Current schema version
 # v2: Added details field for richer user intent/goal tracking, enhanced WatchingItem with flexible metadata
-SCHEMA_VERSION = 2
+# v3: Added is_idle and idle_reason fields for AFK detection
+SCHEMA_VERSION = 3
 
 
 class ActivityItem(BaseModel):
@@ -234,6 +235,17 @@ class HourlySummarySchema(BaseModel):
     """
 
     schema_version: int = Field(SCHEMA_VERSION, description="Schema version number")
+
+    # Idle/AFK detection fields
+    is_idle: bool = Field(
+        False,
+        description="True if user was detected as idle/AFK during this hour",
+    )
+    idle_reason: str | None = Field(
+        None,
+        description="Explanation of why user was detected as idle (e.g., 'Static desktop wallpaper with no context changes')",
+    )
+
     summary: str = Field(..., description="2-3 sentence overview of the hour")
     categories: list[str] = Field(default_factory=list, description="Activity categories present")
     activities: list[ActivityItem] = Field(
@@ -262,6 +274,12 @@ class HourlySummarySchema(BaseModel):
             # Ensure schema_version
             if "schema_version" not in data:
                 data["schema_version"] = SCHEMA_VERSION
+
+            # Ensure idle fields have defaults
+            if "is_idle" not in data:
+                data["is_idle"] = False
+            if "idle_reason" not in data:
+                data["idle_reason"] = None
 
             # Ensure required string field
             if "summary" not in data or not data["summary"]:

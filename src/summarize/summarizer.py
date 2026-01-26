@@ -72,6 +72,10 @@ class SummarizationResult:
     entities_count: int = 0
     embedding_computed: bool = False
 
+    # Idle detection
+    skipped_idle: bool = False
+    idle_reason: str | None = None
+
 
 class HourlySummarizer:
     """
@@ -192,6 +196,29 @@ class HourlySummarizer:
                 error="LLM summarization failed",
                 events_count=evidence.total_events,
                 screenshots_count=evidence.total_screenshots,
+            )
+
+        # Step 3b: Check if LLM detected idle/AFK - skip note creation if so
+        if summary.is_idle:
+            idle_reason = summary.idle_reason or "User detected as idle/AFK"
+            logger.info(f"Idle detected for {hour_start.isoformat()}: {idle_reason}")
+
+            # Still clean up screenshot folder even for idle hours
+            logger.debug("Cleaning up screenshot folder for idle hour...")
+            cleanup_success = delete_hourly_screenshot_dir(hour_start)
+            if cleanup_success:
+                logger.info(f"Deleted screenshot folder for idle hour {hour_start.isoformat()}")
+
+            return SummarizationResult(
+                success=True,
+                note_id=None,
+                file_path=None,
+                error=None,
+                events_count=evidence.total_events,
+                screenshots_count=evidence.total_screenshots,
+                keyframes_count=len(keyframes),
+                skipped_idle=True,
+                idle_reason=idle_reason,
             )
 
         # Step 4: Web enrichment for sports matches and contextual info
