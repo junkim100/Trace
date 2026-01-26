@@ -707,11 +707,14 @@ if __name__ == "__main__":
             hours: Number of hours to run
             db_path: Path to database
         """
+        from src.core.config import get_api_key
+
+        api_key = get_api_key()
 
         def on_complete(result: DailyRevisionResult):
             print(f"Job complete: success={result.success}, day={result.day}")
 
-        scheduler = DailyJobScheduler(db_path=db_path, on_job_complete=on_complete)
+        scheduler = DailyJobScheduler(db_path=db_path, api_key=api_key, on_job_complete=on_complete)
         scheduler.start()
 
         print(f"Scheduler started. Running for {hours} hour(s)...")
@@ -734,9 +737,12 @@ if __name__ == "__main__":
             day: Date in YYYY-MM-DD format (defaults to yesterday)
             db_path: Path to database
         """
-        target_day = datetime.strptime(day, "%Y-%m-%d") if day else None
+        from src.core.config import get_api_key
 
-        scheduler = DailyJobScheduler(db_path=db_path)
+        target_day = datetime.strptime(day, "%Y-%m-%d") if day else None
+        api_key = get_api_key()
+
+        scheduler = DailyJobScheduler(db_path=db_path, api_key=api_key)
         result = scheduler.trigger_now(target_day)
 
         return {
@@ -779,7 +785,10 @@ if __name__ == "__main__":
 
     def pending(db_path: str | None = None):
         """Execute all pending daily jobs."""
-        executor = DailyJobExecutor(db_path=db_path)
+        from src.core.config import get_api_key
+
+        api_key = get_api_key()
+        executor = DailyJobExecutor(db_path=db_path, api_key=api_key)
         results = executor.execute_pending_jobs()
 
         return {
