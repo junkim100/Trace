@@ -341,9 +341,9 @@ if __name__ == "__main__":
         max_hours: int = MAX_BACKFILL_PER_RUN,
     ):
         """Find and backfill missing hours."""
-        import os
+        from src.core.config import get_api_key
 
-        api_key = os.environ.get("OPENAI_API_KEY")
+        api_key = get_api_key()
         detector = BackfillDetector(db_path=db_path, api_key=api_key)
         result = detector.trigger_backfill(notify=notify, max_hours=max_hours)
 

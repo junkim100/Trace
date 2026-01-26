@@ -14,7 +14,6 @@ Features:
 """
 
 import logging
-import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -23,7 +22,7 @@ from enum import Enum
 from pathlib import Path
 
 from src.capture.daemon import CaptureDaemon
-from src.core.config import get_capture_config
+from src.core.config import get_api_key, get_capture_config
 from src.core.paths import DB_PATH
 from src.jobs.backfill import BackfillDetector, BackfillResult
 from src.jobs.daily import DailyJobScheduler
@@ -94,7 +93,7 @@ class ServiceManager:
             api_key: OpenAI API key for summarization
         """
         self.db_path = Path(db_path) if db_path else DB_PATH
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        self.api_key = api_key or get_api_key()
 
         # Service instances
         self._capture_daemon: CaptureDaemon | None = None
