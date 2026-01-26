@@ -4,14 +4,18 @@ macOS Notification Support for Trace
 Provides native macOS notifications for service status updates,
 errors, and important events.
 
-Uses NSUserNotificationCenter for compatibility without requiring
-special entitlements.
+Notifications are routed through Electron to display with the Trace app
+icon and proper attribution.
 """
 
+import json
 import logging
 from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+# Flag to control whether notifications go through Electron IPC or direct macOS API
+_use_electron_notifications = True
 
 
 class NotificationType(str, Enum):
@@ -21,6 +25,57 @@ class NotificationType(str, Enum):
     WARNING = "warning"
     ERROR = "error"
     SUCCESS = "success"
+
+
+def _send_via_electron(title: str, body: str, subtitle: str | None = None) -> bool:
+    """Send notification via Electron IPC (stdout JSON message)."""
+    try:
+        message = {
+            "type": "notification",
+            "title": title,
+            "body": body,
+        }
+        if subtitle:
+            message["subtitle"] = subtitle
+
+        # Write to stdout as JSON line (Electron reads this)
+        print(json.dumps(message), flush=True)
+        logger.debug(f"Notification sent via Electron: {title} - {body}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send notification via Electron: {e}")
+        return False
+
+
+def _send_via_native(
+    title: str, message: str, subtitle: str | None = None, sound: bool = True
+) -> bool:
+    """Send notification via native macOS NSUserNotification (fallback)."""
+    try:
+        from Foundation import NSUserNotification, NSUserNotificationCenter
+
+        notification = NSUserNotification.alloc().init()
+        notification.setTitle_(title)
+        notification.setInformativeText_(message)
+
+        if subtitle:
+            notification.setSubtitle_(subtitle)
+
+        if sound:
+            notification.setSoundName_("default")
+
+        center = NSUserNotificationCenter.defaultUserNotificationCenter()
+        center.deliverNotification_(notification)
+
+        logger.debug(f"Notification sent via native: {title} - {message}")
+        return True
+
+    except ImportError:
+        logger.warning("NSUserNotification not available - notifications disabled")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to send native notification: {e}")
+        return False
 
 
 def send_notification(
@@ -43,32 +98,10 @@ def send_notification(
     Returns:
         True if notification was sent successfully, False otherwise
     """
-    try:
-        # Import here to avoid issues on non-macOS platforms
-        from Foundation import NSUserNotification, NSUserNotificationCenter
-
-        notification = NSUserNotification.alloc().init()
-        notification.setTitle_(title)
-        notification.setInformativeText_(message)
-
-        if subtitle:
-            notification.setSubtitle_(subtitle)
-
-        if sound:
-            notification.setSoundName_("default")
-
-        center = NSUserNotificationCenter.defaultUserNotificationCenter()
-        center.deliverNotification_(notification)
-
-        logger.debug(f"Notification sent: {title} - {message}")
-        return True
-
-    except ImportError:
-        logger.warning("NSUserNotification not available - notifications disabled")
-        return False
-    except Exception as e:
-        logger.error(f"Failed to send notification: {e}")
-        return False
+    if _use_electron_notifications:
+        return _send_via_electron(title, message, subtitle)
+    else:
+        return _send_via_native(title, message, subtitle, sound)
 
 
 def send_error_notification(error: str, context: str | None = None) -> bool:

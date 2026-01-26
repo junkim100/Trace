@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, systemPreferences, shell, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, systemPreferences, shell, dialog, globalShortcut, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -178,6 +178,12 @@ function startPythonBackend() {
         pythonReady = true;
         console.log(`Python backend ready (version ${message.version})`);
         updateTrayMenu();
+        return;
+      }
+
+      // Handle notification messages from Python
+      if (message.type === 'notification') {
+        showNotification(message.title, message.body, message.subtitle);
         return;
       }
 
@@ -1191,3 +1197,31 @@ setInterval(() => {
     updateTrayMenu();
   }
 }, 60000); // Update every minute
+
+// Show a native notification from the Trace app
+function showNotification(title, body, subtitle) {
+  if (!Notification.isSupported()) {
+    console.log('Notifications not supported');
+    return;
+  }
+
+  const notification = new Notification({
+    title: title || 'Trace',
+    body: body || '',
+    subtitle: subtitle || undefined,
+    silent: false,
+  });
+
+  notification.on('click', () => {
+    // Show the main window when notification is clicked
+    if (mainWindow) {
+      mainWindow.show();
+      mainWindow.focus();
+    } else {
+      createWindow();
+    }
+  });
+
+  notification.show();
+  console.log(`Notification shown: ${title} - ${body}`);
+}

@@ -114,8 +114,9 @@ export function Dashboard() {
 
   return (
     <div style={styles.container}>
-      {/* Titlebar */}
+      {/* Titlebar - with left padding for macOS traffic lights */}
       <div className="titlebar" style={styles.titlebar}>
+        <div style={styles.trafficLightSpacer} />
         <button onClick={() => navigate('/chat')} style={styles.backButton}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M19 12H5M12 19l-7-7 7-7" />
@@ -342,9 +343,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     padding: '0 1rem',
-    gap: '1rem',
+    gap: '0.5rem',
     borderBottom: '1px solid var(--border)',
-    minHeight: '36px',
+    minHeight: '52px',
+  },
+  trafficLightSpacer: {
+    width: '60px', // Space for macOS window controls (traffic lights)
+    flexShrink: 0,
   },
   backButton: {
     backgroundColor: 'transparent',
