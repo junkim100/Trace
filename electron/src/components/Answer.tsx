@@ -7,7 +7,15 @@ interface AnswerProps {
   error?: string | null;
   onCitationClick?: (noteId: string) => void;
   onRetry?: () => void;
+  onSuggestionClick?: (question: string) => void;
 }
+
+// Example questions for the placeholder
+const EXAMPLE_QUESTIONS = [
+  "What did I work on today?",
+  "What were my most used apps this week?",
+  "Tell me about Python",
+];
 
 // Loading message progression for better UX
 const LOADING_MESSAGES = [
@@ -60,7 +68,7 @@ function categorizeError(error: string): { type: 'network' | 'api' | 'timeout' |
   };
 }
 
-export function Answer({ response, loading = false, error = null, onCitationClick, onRetry }: AnswerProps) {
+export function Answer({ response, loading = false, error = null, onCitationClick, onRetry, onSuggestionClick }: AnswerProps) {
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [loadingDots, setLoadingDots] = useState('');
 
@@ -165,10 +173,16 @@ export function Answer({ response, loading = false, error = null, onCitationClic
           </svg>
           <p style={styles.placeholderText}>Ask a question about your activity</p>
           <div style={styles.suggestions}>
-            <span style={styles.suggestionLabel}>Try:</span>
-            <span style={styles.suggestion}>&ldquo;What did I work on today?&rdquo;</span>
-            <span style={styles.suggestion}>&ldquo;What were my most used apps this week?&rdquo;</span>
-            <span style={styles.suggestion}>&ldquo;Tell me about Python&rdquo;</span>
+            <span style={styles.suggestionLabel}>Try asking:</span>
+            {EXAMPLE_QUESTIONS.map((question, idx) => (
+              <button
+                key={idx}
+                onClick={() => onSuggestionClick?.(question)}
+                style={styles.suggestionButton}
+              >
+                {question}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -184,16 +198,33 @@ export function Answer({ response, loading = false, error = null, onCitationClic
           <div style={styles.citations}>
             <span style={styles.citationsLabel}>Sources:</span>
             <div style={styles.citationsList}>
-              {response.citations.map((citation, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onCitationClick?.(citation.note_id)}
-                  style={styles.citationButton}
-                  title={citation.quote}
-                >
-                  [{idx + 1}] {citation.note_id}
-                </button>
-              ))}
+              {response.citations.map((citation, idx) => {
+                // Format the timestamp as a readable label
+                const formatCitationLabel = (timestamp: string) => {
+                  try {
+                    const date = new Date(timestamp);
+                    return date.toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    });
+                  } catch {
+                    return `Note ${idx + 1}`;
+                  }
+                };
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => onCitationClick?.(citation.note_id)}
+                    style={styles.citationButton}
+                    title={citation.quote}
+                  >
+                    {formatCitationLabel(citation.timestamp)}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -382,10 +413,16 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     marginBottom: '0.5rem',
   },
-  suggestion: {
+  suggestionButton: {
+    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+    border: '1px solid rgba(0, 122, 255, 0.25)',
+    borderRadius: '8px',
+    padding: '0.625rem 1rem',
     fontSize: '0.85rem',
     color: 'var(--accent)',
-    opacity: 0.8,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    textAlign: 'left' as const,
   },
   answer: {
     padding: '1.5rem',

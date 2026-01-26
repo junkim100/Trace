@@ -43,6 +43,11 @@ class NoteMatch:
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
+        # Generate a human-readable title from the timestamp
+        title = self.start_ts.strftime("%A, %B %d, %Y | %H:00")
+        if self.note_type == "day":
+            title = self.start_ts.strftime("%A, %B %d, %Y (Daily Summary)")
+
         return {
             "note_id": self.note_id,
             "note_type": self.note_type,
@@ -54,6 +59,11 @@ class NoteMatch:
             "entities": self.entities,
             "distance": self.distance,
             "score": self.score,
+            # Frontend compatibility aliases
+            "similarity": self.score,
+            "title": title,
+            "path": self.file_path,
+            "timestamp": self.start_ts.isoformat(),
         }
 
     @classmethod

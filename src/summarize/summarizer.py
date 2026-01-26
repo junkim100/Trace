@@ -199,6 +199,7 @@ class HourlySummarizer:
             )
 
         # Step 3b: Check if LLM detected idle/AFK - skip note creation if so
+        # ONLY skip if LLM explicitly sets is_idle=true to avoid losing real activity
         if summary.is_idle:
             idle_reason = summary.idle_reason or "User detected as idle/AFK"
             logger.info(f"Idle detected for {hour_start.isoformat()}: {idle_reason}")

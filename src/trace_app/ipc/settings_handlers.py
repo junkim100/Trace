@@ -223,6 +223,20 @@ def handle_set_api_key(params: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(str(e)) from e
 
 
+@handler("settings.get_api_key")
+def handle_get_api_key(params: dict[str, Any]) -> dict[str, Any]:
+    """Get the stored OpenAI API key.
+
+    Returns:
+        {"api_key": str | None, "has_api_key": bool}
+    """
+    api_key = get_api_key()
+    return {
+        "api_key": api_key,
+        "has_api_key": bool(api_key),
+    }
+
+
 @handler("settings.get_appearance")
 def handle_get_appearance(params: dict[str, Any]) -> dict[str, Any]:
     """Get appearance settings.

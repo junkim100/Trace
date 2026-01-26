@@ -219,6 +219,10 @@ contextBridge.exposeInMainWorld('traceAPI', {
     setValue: (key, value) =>
       ipcRenderer.invoke('python:call', 'settings.set_value', { key, value }),
 
+    // Get API key (for displaying in settings)
+    getApiKey: () =>
+      ipcRenderer.invoke('python:call', 'settings.get_api_key', {}),
+
     // Set API key
     setApiKey: (apiKey) =>
       ipcRenderer.invoke('python:call', 'settings.set_api_key', { api_key: apiKey }),
@@ -453,6 +457,24 @@ contextBridge.exposeInMainWorld('traceAPI', {
     onOpenSettings: (callback) => {
       ipcRenderer.on('tray:openSettings', callback);
       return () => ipcRenderer.removeAllListeners('tray:openSettings');
+    },
+  },
+
+  // Auto-update methods
+  updates: {
+    // Check for updates (options: { silent?: boolean, force?: boolean })
+    check: (options = {}) => ipcRenderer.invoke('updates:check', options),
+
+    // Get cached update info
+    getInfo: () => ipcRenderer.invoke('updates:getInfo'),
+
+    // Open release page in browser
+    openReleasePage: (url) => ipcRenderer.invoke('updates:openReleasePage', url),
+
+    // Listen for update available events
+    onUpdateAvailable: (callback) => {
+      ipcRenderer.on('updates:available', (event, info) => callback(info));
+      return () => ipcRenderer.removeListener('updates:available', callback);
     },
   },
 });

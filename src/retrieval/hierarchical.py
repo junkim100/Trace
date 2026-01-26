@@ -236,51 +236,26 @@ class HierarchicalSearcher:
         time_filter: TimeFilter | None,
         limit: int,
     ) -> list[NoteMatch]:
-        """Search only daily summary notes."""
-        conn = get_connection(self.db_path)
+        """Search only daily summary notes using the VectorSearcher."""
         try:
-            # Get embedding for query
-            query_embedding = self._vector_searcher._embedding_computer.compute_for_query(query)
-            if query_embedding is None:
-                return []
-
-            # Build time filter SQL
-            time_sql = ""
-            time_params = []
-            if time_filter:
-                time_sql = "AND n.start_ts >= ? AND n.start_ts <= ?"
-                time_params = [time_filter.start.isoformat(), time_filter.end.isoformat()]
-
-            # Search daily notes only
-            cursor = conn.cursor()
-            cursor.execute(
-                f"""
-                SELECT n.note_id, n.note_type, n.start_ts, n.end_ts, n.file_path,
-                       n.json_payload, e.embedding,
-                       vec_distance_cosine(e.embedding, ?) as distance
-                FROM notes n
-                JOIN embeddings e ON n.note_id = e.note_id
-                WHERE n.note_type = 'day'
-                {time_sql}
-                ORDER BY distance ASC
-                LIMIT ?
-                """,
-                [query_embedding, *time_params, limit],
+            # Use VectorSearcher to get matching notes
+            result = self._vector_searcher.search(
+                query=query,
+                time_filter=time_filter,
+                limit=limit * 3,  # Get extra to filter by note_type
             )
 
-            matches = []
-            for row in cursor.fetchall():
-                match = self._row_to_note_match(row)
-                if match:
-                    matches.append(match)
+            # Filter to only daily notes
+            daily_matches = [
+                note for note in result.matches
+                if note.note_type == 'day'
+            ]
 
-            return matches
+            return daily_matches[:limit]
 
         except Exception as e:
             logger.error(f"Daily notes search failed: {e}")
             return []
-        finally:
-            conn.close()
 
     def _search_hourly_notes_for_day(
         self,
@@ -289,14 +264,8 @@ class HierarchicalSearcher:
         time_filter: TimeFilter | None,
         limit: int,
     ) -> list[NoteMatch]:
-        """Search hourly notes for a specific day."""
-        conn = get_connection(self.db_path)
+        """Search hourly notes for a specific day using the VectorSearcher."""
         try:
-            # Get embedding for query
-            query_embedding = self._vector_searcher._embedding_computer.compute_for_query(query)
-            if query_embedding is None:
-                return []
-
             # Build day filter (restrict to this specific day)
             day_start = datetime.combine(day, datetime.min.time())
             day_end = datetime.combine(day, datetime.max.time())
@@ -306,35 +275,31 @@ class HierarchicalSearcher:
                 day_start = max(day_start, time_filter.start)
                 day_end = min(day_end, time_filter.end)
 
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT n.note_id, n.note_type, n.start_ts, n.end_ts, n.file_path,
-                       n.json_payload, e.embedding,
-                       vec_distance_cosine(e.embedding, ?) as distance
-                FROM notes n
-                JOIN embeddings e ON n.note_id = e.note_id
-                WHERE n.note_type = 'hour'
-                AND n.start_ts >= ? AND n.start_ts <= ?
-                ORDER BY distance ASC
-                LIMIT ?
-                """,
-                [query_embedding, day_start.isoformat(), day_end.isoformat(), limit],
+            # Create a time filter for this specific day
+            day_time_filter = TimeFilter(
+                start=day_start,
+                end=day_end,
+                description=f"day {day.isoformat()}",
             )
 
-            matches = []
-            for row in cursor.fetchall():
-                match = self._row_to_note_match(row)
-                if match:
-                    matches.append(match)
+            # Use VectorSearcher to get matching notes
+            result = self._vector_searcher.search(
+                query=query,
+                time_filter=day_time_filter,
+                limit=limit * 2,  # Get extra to filter by note_type
+            )
 
-            return matches
+            # Filter to only hourly notes
+            hourly_matches = [
+                note for note in result.matches
+                if note.note_type == 'hour'
+            ]
+
+            return hourly_matches[:limit]
 
         except Exception as e:
             logger.error(f"Hourly notes search failed for {day}: {e}")
             return []
-        finally:
-            conn.close()
 
     def _fallback_hourly_search(
         self,
@@ -348,43 +313,24 @@ class HierarchicalSearcher:
 
         This handles cases where daily revision hasn't run yet.
         """
-        conn = get_connection(self.db_path)
         try:
-            query_embedding = self._vector_searcher._embedding_computer.compute_for_query(query)
-            if query_embedding is None:
-                return []
-
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT n.note_id, n.note_type, n.start_ts, n.end_ts, n.file_path,
-                       n.json_payload, e.embedding,
-                       vec_distance_cosine(e.embedding, ?) as distance
-                FROM notes n
-                JOIN embeddings e ON n.note_id = e.note_id
-                WHERE n.note_type = 'hour'
-                AND n.start_ts >= ? AND n.start_ts <= ?
-                ORDER BY distance ASC
-                LIMIT ?
-                """,
-                [
-                    query_embedding,
-                    time_filter.start.isoformat(),
-                    time_filter.end.isoformat(),
-                    max_days * max_hours_per_day,
-                ],
+            # Use VectorSearcher to get matching notes
+            result = self._vector_searcher.search(
+                query=query,
+                time_filter=time_filter,
+                limit=max_days * max_hours_per_day * 2,  # Get extra
             )
 
-            # Group hourly notes by date
+            # Filter to only hourly notes and group by date
             notes_by_date: dict[date, list[NoteMatch]] = {}
-            for row in cursor.fetchall():
-                match = self._row_to_note_match(row)
-                if match:
-                    note_date = self._extract_date_from_note(match)
-                    if note_date:
-                        if note_date not in notes_by_date:
-                            notes_by_date[note_date] = []
-                        notes_by_date[note_date].append(match)
+            for match in result.matches:
+                if match.note_type != 'hour':
+                    continue
+                note_date = self._extract_date_from_note(match)
+                if note_date:
+                    if note_date not in notes_by_date:
+                        notes_by_date[note_date] = []
+                    notes_by_date[note_date].append(match)
 
             # Build DayMatch objects
             day_matches = []
@@ -411,8 +357,6 @@ class HierarchicalSearcher:
         except Exception as e:
             logger.error(f"Fallback hourly search failed: {e}")
             return []
-        finally:
-            conn.close()
 
     def _row_to_note_match(self, row) -> NoteMatch | None:
         """Convert a database row to NoteMatch."""

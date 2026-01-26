@@ -8,6 +8,7 @@ import logging
 from typing import Any
 
 from src.chat.api import ChatAPI, ChatRequest
+from src.core.config import get_api_key
 from src.core.paths import NOTES_DIR
 from src.trace_app.ipc.server import handler
 
@@ -21,7 +22,8 @@ def get_chat_api() -> ChatAPI:
     """Get or create the chat API instance."""
     global _chat_api
     if _chat_api is None:
-        _chat_api = ChatAPI()
+        api_key = get_api_key()
+        _chat_api = ChatAPI(api_key=api_key)
     return _chat_api
 
 
@@ -61,49 +63,70 @@ def handle_read_note(params: dict[str, Any]) -> dict[str, Any]:
     """Read the contents of a note file.
 
     Params:
-        note_id: The note ID (format: YYYYMMDD-HH or YYYYMMDD for daily notes)
+        note_id: The note ID (UUID format or YYYYMMDD-HH / YYYYMMDD for legacy)
 
     Returns:
         {"content": str, "path": str} or {"error": str}
     """
     import re
+    from pathlib import Path
+
+    from src.db.migrations import get_connection
 
     note_id = params.get("note_id")
     if not note_id:
         raise ValueError("note_id parameter is required")
 
-    # Validate note_id format to prevent path traversal attacks
-    # Must match YYYYMMDD-HH (hourly) or YYYYMMDD (daily)
-    if not re.match(r"^\d{8}(-\d{2})?$", note_id):
+    note_path = None
+
+    # Check if it's a UUID format (used by citations)
+    uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    if re.match(uuid_pattern, note_id, re.IGNORECASE):
+        # Look up the note in the database by UUID
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT file_path FROM notes WHERE note_id = ?",
+                (note_id,),
+            )
+            row = cursor.fetchone()
+            if row:
+                note_path = Path(row["file_path"])
+            else:
+                raise FileNotFoundError(f"Note not found: {note_id}")
+        finally:
+            conn.close()
+    # Check for legacy date format: YYYYMMDD-HH or YYYYMMDD
+    elif re.match(r"^\d{8}(-\d{2})?$", note_id):
+        try:
+            if "-" in note_id:
+                # Hourly note: YYYYMMDD-HH
+                date_part, hour = note_id.split("-")
+                year = date_part[:4]
+                month = date_part[4:6]
+                day = date_part[6:8]
+                if not (0 <= int(hour) <= 23):
+                    raise ValueError(f"Invalid hour in note_id: {hour}")
+                filename = f"hour-{note_id}.md"
+            else:
+                # Daily note: YYYYMMDD
+                year = note_id[:4]
+                month = note_id[4:6]
+                day = note_id[6:8]
+                filename = f"day-{note_id}.md"
+
+            if not (1 <= int(month) <= 12) or not (1 <= int(day) <= 31):
+                raise ValueError(f"Invalid date in note_id: {note_id}")
+
+            note_path = NOTES_DIR / year / month / day / filename
+        except (ValueError, IndexError) as e:
+            raise ValueError(f"Invalid note_id format: {note_id}") from e
+    else:
         raise ValueError(f"Invalid note_id format: {note_id}")
 
-    # Parse note_id to find the file
-    # Format: YYYYMMDD-HH for hourly, YYYYMMDD for daily
-    try:
-        if "-" in note_id:
-            # Hourly note: YYYYMMDD-HH
-            date_part, hour = note_id.split("-")
-            year = date_part[:4]
-            month = date_part[4:6]
-            day = date_part[6:8]
-            # Validate hour is 00-23
-            if not (0 <= int(hour) <= 23):
-                raise ValueError(f"Invalid hour in note_id: {hour}")
-            filename = f"hour-{note_id}.md"
-        else:
-            # Daily note: YYYYMMDD
-            year = note_id[:4]
-            month = note_id[4:6]
-            day = note_id[6:8]
-            filename = f"day-{note_id}.md"
-
-        # Validate date components are reasonable
-        if not (1 <= int(month) <= 12) or not (1 <= int(day) <= 31):
-            raise ValueError(f"Invalid date in note_id: {note_id}")
-
-        note_path = NOTES_DIR / year / month / day / filename
-
-        # Validate that the resolved path stays within NOTES_DIR
+    # Validate that the resolved path stays within NOTES_DIR
+    if note_path:
         resolved_path = note_path.resolve()
         notes_dir_resolved = NOTES_DIR.resolve()
         if not resolved_path.is_relative_to(notes_dir_resolved):
@@ -115,8 +138,7 @@ def handle_read_note(params: dict[str, Any]) -> dict[str, Any]:
         content = note_path.read_text(encoding="utf-8")
         return {"content": content, "path": str(note_path)}
 
-    except (ValueError, IndexError) as e:
-        raise ValueError(f"Invalid note_id format: {note_id}") from e
+    raise FileNotFoundError(f"Note not found: {note_id}")
 
 
 @handler("notes.list")

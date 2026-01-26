@@ -176,6 +176,10 @@ class CaptureDaemon:
         self._last_event_checkpoint: float = 0
         self._event_checkpoint_interval = 60.0  # Checkpoint current event every 60 seconds
 
+        # Sleep/wake detection (P13-09)
+        self._last_capture_time: datetime | None = None
+        self._sleep_wake_threshold_seconds = 60  # If gap > 60s, assume sleep/wake occurred
+
         # Shutdown handling
         self._shutdown_event = threading.Event()
 
@@ -388,6 +392,20 @@ class CaptureDaemon:
     def _capture_tick(self) -> CaptureSnapshot:
         """Execute a single capture tick."""
         timestamp = datetime.now()
+
+        # P13-09: Detect sleep/wake by checking time gap since last capture
+        # If there's a large gap (> threshold), the computer likely slept
+        # Force close the current event to avoid spanning across sleep periods
+        if self._last_capture_time is not None:
+            time_gap = (timestamp - self._last_capture_time).total_seconds()
+            if time_gap > self._sleep_wake_threshold_seconds:
+                logger.info(
+                    f"Sleep/wake detected: {time_gap:.1f}s gap since last capture. "
+                    f"Closing current event to start fresh."
+                )
+                self._event_tracker.close_current_event(end_ts=self._last_capture_time)
+
+        self._last_capture_time = timestamp
 
         # 1. Capture foreground app information
         foreground = capture_foreground_app(timestamp)

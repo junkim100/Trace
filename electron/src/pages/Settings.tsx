@@ -6,7 +6,6 @@ export function Settings() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<AllSettings | null>(null);
   const [apiKey, setApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,6 +45,16 @@ export function Settings() {
     markdown_files: number;
     entities: number;
     edges: number;
+  } | null>(null);
+
+  // Update state
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<{
+    available: boolean;
+    latestVersion?: string;
+    currentVersion?: string;
+    releaseUrl?: string;
+    releaseNotes?: string;
   } | null>(null);
 
   const loadBlocklist = async () => {
@@ -208,6 +217,19 @@ export function Settings() {
     }
   };
 
+  const handleClearApiKey = async () => {
+    setMessage(null);
+    try {
+      await window.traceAPI.settings.setValue('api_key', null);
+      setMessage({ type: 'success', text: 'API key cleared' });
+      // Refresh settings
+      const result = await window.traceAPI.settings.getAll();
+      setSettings(result);
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to clear API key' });
+    }
+  };
+
   const handleSettingChange = async (key: string, value: unknown) => {
     try {
       const result = await window.traceAPI.settings.setValue(key, value);
@@ -307,6 +329,43 @@ export function Settings() {
     }
   };
 
+  const handleCheckForUpdates = async () => {
+    setUpdateChecking(true);
+    setMessage(null);
+    try {
+      const result = await window.traceAPI.updates.check({ silent: false, force: true });
+      if (result.error) {
+        setMessage({ type: 'error', text: result.error });
+      } else if (result.available && result.updateInfo) {
+        setUpdateInfo({
+          available: true,
+          latestVersion: result.updateInfo.latestVersion,
+          currentVersion: result.updateInfo.currentVersion,
+          releaseUrl: result.updateInfo.releaseUrl,
+          releaseNotes: result.updateInfo.releaseNotes,
+        });
+      } else {
+        setUpdateInfo({
+          available: false,
+          currentVersion: result.currentVersion,
+        });
+        setMessage({ type: 'success', text: 'You are running the latest version.' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to check for updates' });
+    } finally {
+      setUpdateChecking(false);
+    }
+  };
+
+  const handleOpenReleasePage = async (url: string) => {
+    try {
+      await window.traceAPI.updates.openReleasePage(url);
+    } catch (err) {
+      console.error('Failed to open release page:', err);
+    }
+  };
+
   const formatHour = (hour: number) => {
     if (hour === 0) return '12:00 AM';
     if (hour === 12) return '12:00 PM';
@@ -368,25 +427,47 @@ export function Settings() {
             <label style={styles.label}>OpenAI API Key</label>
             <p style={styles.description}>
               Required for generating summaries and answering queries.
-              {settings?.has_api_key && (
-                <span style={styles.status}> (Currently set)</span>
-              )}
             </p>
+
+            {/* Status indicator */}
+            <div style={styles.apiKeyStatus}>
+              {settings?.has_api_key ? (
+                <>
+                  <span style={styles.apiKeyStatusSet}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                    API key is set
+                  </span>
+                  <button
+                    onClick={handleClearApiKey}
+                    style={styles.clearButton}
+                    type="button"
+                  >
+                    Clear
+                  </button>
+                </>
+              ) : (
+                <span style={styles.apiKeyStatusNotSet}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  No API key set
+                </span>
+              )}
+            </div>
+
+            {/* Input for new key */}
             <div style={styles.inputRow}>
               <input
-                type={showApiKey ? 'text' : 'password'}
+                type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={settings?.has_api_key ? '••••••••••••••••' : 'sk-...'}
+                placeholder="Enter new API key (sk-...)"
                 style={styles.input}
               />
-              <button
-                onClick={() => setShowApiKey(!showApiKey)}
-                style={styles.toggleButton}
-                type="button"
-              >
-                {showApiKey ? 'Hide' : 'Show'}
-              </button>
               <button
                 onClick={handleSaveApiKey}
                 disabled={!apiKey.trim() || saving}
@@ -504,25 +585,75 @@ export function Settings() {
 
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Capture & Processing</h2>
+
+          {/* Power Saving Mode */}
           <div style={styles.field}>
-            <div style={styles.toggleRow}>
-              <div>
-                <label style={styles.label}>Power Saving Mode</label>
-                <p style={styles.description}>Reduce capture frequency when on battery power to conserve energy.</p>
+            <label style={styles.label}>Power Saving Mode</label>
+            <p style={styles.description}>
+              Reduce capture frequency to conserve battery. Normal capture: every 1 second.
+            </p>
+            <select
+              value={settings?.config.capture.power_saving_mode ?? 'automatic'}
+              onChange={(e) => handleSettingChange('capture.power_saving_mode', e.target.value)}
+              style={styles.select}
+            >
+              <option value="off">Off - Always capture at normal speed</option>
+              <option value="automatic">Automatic - Activate when battery is low</option>
+              <option value="always_on">Always On - Always reduce capture on battery</option>
+            </select>
+
+            {/* Battery threshold setting for automatic mode */}
+            {settings?.config.capture.power_saving_mode === 'automatic' && (
+              <div style={styles.powerSavingOptions}>
+                <label style={styles.subLabel}>Activate when battery is below:</label>
+                <div style={styles.sliderRow}>
+                  <input
+                    type="range"
+                    min="10"
+                    max="50"
+                    step="5"
+                    value={settings?.config.capture.power_saving_threshold ?? 20}
+                    onChange={(e) => handleSettingChange('capture.power_saving_threshold', Number(e.target.value))}
+                    style={styles.slider}
+                  />
+                  <span style={styles.sliderValue}>{settings?.config.capture.power_saving_threshold ?? 20}%</span>
+                </div>
               </div>
-              <label className="settings-switch" style={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={settings?.config.capture.power_saving_enabled ?? true}
-                  onChange={(e) => handleSettingChange('capture.power_saving_enabled', e.target.checked)}
-                />
-                <span style={styles.switchSlider}></span>
-              </label>
+            )}
+
+            {/* Capture interval when power saving is active */}
+            {settings?.config.capture.power_saving_mode !== 'off' && (
+              <div style={styles.powerSavingOptions}>
+                <label style={styles.subLabel}>Capture interval when power saving:</label>
+                <select
+                  value={settings?.config.capture.power_saving_interval ?? 5}
+                  onChange={(e) => handleSettingChange('capture.power_saving_interval', Number(e.target.value))}
+                  style={{ ...styles.select, marginTop: '0.5rem' }}
+                >
+                  <option value={3}>Every 3 seconds (mild saving)</option>
+                  <option value={5}>Every 5 seconds (recommended)</option>
+                  <option value={10}>Every 10 seconds (moderate saving)</option>
+                  <option value={30}>Every 30 seconds (aggressive saving)</option>
+                </select>
+              </div>
+            )}
+
+            {/* Info box showing current behavior */}
+            <div style={styles.infoBox}>
+              <span style={styles.infoIcon}>ℹ</span>
+              <span>
+                {settings?.config.capture.power_saving_mode === 'off'
+                  ? 'Captures every 1 second regardless of power source.'
+                  : settings?.config.capture.power_saving_mode === 'always_on'
+                  ? `On battery: captures every ${settings?.config.capture.power_saving_interval ?? 5}s. On power: every 1s.`
+                  : `On battery below ${settings?.config.capture.power_saving_threshold ?? 20}%: captures every ${settings?.config.capture.power_saving_interval ?? 5}s. Otherwise: every 1s.`}
+              </span>
             </div>
           </div>
+
           <div style={styles.field}>
             <label style={styles.label}>Summarization Interval</label>
-            <p style={styles.description}>How often to generate hourly summary notes.</p>
+            <p style={styles.description}>How often to generate summary notes from captured screenshots.</p>
             <select
               value={settings?.config.capture.summarization_interval_minutes ?? 60}
               onChange={(e) => handleSettingChange('capture.summarization_interval_minutes', Number(e.target.value))}
@@ -535,6 +666,7 @@ export function Settings() {
               ))}
             </select>
           </div>
+
           <div style={styles.field}>
             <label style={styles.label}>Daily Revision Time</label>
             <p style={styles.description}>When to run daily processing (revision, cleanup).</p>
@@ -550,36 +682,75 @@ export function Settings() {
               ))}
             </select>
           </div>
+
+          {/* Screenshot Quality with better explanation */}
           <div style={styles.field}>
             <label style={styles.label}>Screenshot Quality</label>
-            <p style={styles.description}>JPEG compression quality (higher = better quality, larger files).</p>
-            <div style={styles.sliderRow}>
-              <input
-                type="range"
-                min="50"
-                max="100"
-                step="5"
-                value={settings?.config.capture.jpeg_quality ?? 85}
-                onChange={(e) => handleSettingChange('capture.jpeg_quality', Number(e.target.value))}
-                style={styles.slider}
-              />
-              <span style={styles.sliderValue}>{settings?.config.capture.jpeg_quality ?? 85}%</span>
+            <p style={styles.description}>
+              JPEG compression quality. Higher values produce clearer screenshots but use more storage.
+            </p>
+            <div style={styles.sliderContainer}>
+              <div style={styles.sliderLabels}>
+                <span style={styles.sliderLabelLeft}>Smaller files</span>
+                <span style={styles.sliderLabelRight}>Better quality</span>
+              </div>
+              <div style={styles.sliderRow}>
+                <input
+                  type="range"
+                  min="50"
+                  max="100"
+                  step="5"
+                  value={settings?.config.capture.jpeg_quality ?? 85}
+                  onChange={(e) => handleSettingChange('capture.jpeg_quality', Number(e.target.value))}
+                  style={styles.slider}
+                />
+                <span style={styles.sliderValue}>{settings?.config.capture.jpeg_quality ?? 85}%</span>
+              </div>
+              <div style={styles.sliderHint}>
+                {(settings?.config.capture.jpeg_quality ?? 85) <= 60
+                  ? '⚠️ Low quality - text may be hard to read'
+                  : (settings?.config.capture.jpeg_quality ?? 85) <= 75
+                  ? 'Good balance of quality and file size'
+                  : (settings?.config.capture.jpeg_quality ?? 85) <= 90
+                  ? '✓ Recommended - clear screenshots'
+                  : '✓ Maximum quality - larger files'}
+              </div>
             </div>
           </div>
+
+          {/* Deduplication Sensitivity with better explanation */}
           <div style={styles.field}>
             <label style={styles.label}>Deduplication Sensitivity</label>
-            <p style={styles.description}>How similar screenshots must be to be considered duplicates (lower = stricter).</p>
-            <div style={styles.sliderRow}>
-              <input
-                type="range"
-                min="1"
-                max="15"
-                step="1"
-                value={settings?.config.capture.dedup_threshold ?? 5}
-                onChange={(e) => handleSettingChange('capture.dedup_threshold', Number(e.target.value))}
-                style={styles.slider}
-              />
-              <span style={styles.sliderValue}>{settings?.config.capture.dedup_threshold ?? 5}</span>
+            <p style={styles.description}>
+              Controls how similar two screenshots must be to skip the duplicate.
+              Lower values require more similarity (stricter), higher values allow more differences (looser).
+            </p>
+            <div style={styles.sliderContainer}>
+              <div style={styles.sliderLabels}>
+                <span style={styles.sliderLabelLeft}>Stricter (keep more)</span>
+                <span style={styles.sliderLabelRight}>Looser (skip more)</span>
+              </div>
+              <div style={styles.sliderRow}>
+                <input
+                  type="range"
+                  min="1"
+                  max="15"
+                  step="1"
+                  value={settings?.config.capture.dedup_threshold ?? 5}
+                  onChange={(e) => handleSettingChange('capture.dedup_threshold', Number(e.target.value))}
+                  style={styles.slider}
+                />
+                <span style={styles.sliderValue}>{settings?.config.capture.dedup_threshold ?? 5}</span>
+              </div>
+              <div style={styles.sliderHint}>
+                {(settings?.config.capture.dedup_threshold ?? 5) <= 3
+                  ? 'Very strict - keeps most screenshots, uses more storage'
+                  : (settings?.config.capture.dedup_threshold ?? 5) <= 6
+                  ? '✓ Recommended - good balance'
+                  : (settings?.config.capture.dedup_threshold ?? 5) <= 10
+                  ? 'Moderate - skips similar content, saves storage'
+                  : '⚠️ Very loose - may skip important changes'}
+              </div>
             </div>
           </div>
         </section>
@@ -955,6 +1126,75 @@ export function Settings() {
             }}
           >
             {exportLoading ? 'Exporting...' : 'Export to ZIP Archive'}
+          </button>
+        </section>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Updates</h2>
+          <div style={styles.field}>
+            <div style={styles.toggleRow}>
+              <div>
+                <label style={styles.label}>Check for Updates on Launch</label>
+                <p style={styles.description}>Automatically check for updates when Trace starts.</p>
+              </div>
+              <label className="settings-switch" style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={settings?.config.updates?.check_on_launch ?? true}
+                  onChange={(e) => handleSettingChange('updates.check_on_launch', e.target.checked)}
+                />
+                <span style={styles.switchSlider}></span>
+              </label>
+            </div>
+          </div>
+          <div style={styles.field}>
+            <div style={styles.toggleRow}>
+              <div>
+                <label style={styles.label}>Check Periodically</label>
+                <p style={styles.description}>Check for updates in the background every 24 hours.</p>
+              </div>
+              <label className="settings-switch" style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={settings?.config.updates?.check_periodically ?? true}
+                  onChange={(e) => handleSettingChange('updates.check_periodically', e.target.checked)}
+                />
+                <span style={styles.switchSlider}></span>
+              </label>
+            </div>
+          </div>
+
+          {updateInfo?.available && (
+            <div style={styles.updateAvailable}>
+              <div style={styles.updateAvailableHeader}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <span>Update Available: v{updateInfo.latestVersion}</span>
+              </div>
+              {updateInfo.releaseNotes && (
+                <p style={styles.updateNotes}>{updateInfo.releaseNotes}</p>
+              )}
+              <button
+                onClick={() => updateInfo.releaseUrl && handleOpenReleasePage(updateInfo.releaseUrl)}
+                style={styles.downloadButton}
+              >
+                Download Update
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={handleCheckForUpdates}
+            disabled={updateChecking}
+            style={{
+              ...styles.checkUpdateButton,
+              ...(updateChecking ? styles.saveButtonDisabled : {}),
+            }}
+          >
+            {updateChecking ? 'Checking...' : 'Check for Updates Now'}
           </button>
         </section>
 
@@ -1440,6 +1680,86 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     textAlign: 'center' as const,
   },
+  // Update section styles
+  updateAvailable: {
+    backgroundColor: 'rgba(52, 199, 89, 0.1)',
+    border: '1px solid rgba(52, 199, 89, 0.3)',
+    borderRadius: '8px',
+    padding: '1rem',
+    marginBottom: '1rem',
+  },
+  updateAvailableHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    fontSize: '0.95rem',
+    fontWeight: 600,
+    color: '#34c759',
+    marginBottom: '0.5rem',
+  },
+  updateNotes: {
+    fontSize: '0.85rem',
+    color: 'var(--text-secondary)',
+    marginBottom: '0.75rem',
+    lineHeight: 1.5,
+  },
+  downloadButton: {
+    backgroundColor: '#34c759',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '0.5rem 1rem',
+    fontSize: '0.85rem',
+    fontWeight: 500,
+    color: 'white',
+    cursor: 'pointer',
+  },
+  checkUpdateButton: {
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    padding: '0.75rem 1rem',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+    width: '100%',
+  },
+  // API key status styles
+  apiKeyStatus: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    padding: '0.75rem 1rem',
+    marginBottom: '0.75rem',
+  },
+  apiKeyStatusSet: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    color: '#34c759',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+  },
+  apiKeyStatusNotSet: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    color: '#ff9500',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+  },
+  clearButton: {
+    backgroundColor: 'transparent',
+    border: '1px solid rgba(255, 59, 48, 0.3)',
+    borderRadius: '6px',
+    padding: '0.4rem 0.75rem',
+    fontSize: '0.8rem',
+    color: '#ff3b30',
+    cursor: 'pointer',
+  },
   // Profile input styles
   profileInput: {
     width: '100%',
@@ -1464,6 +1784,58 @@ const styles: Record<string, React.CSSProperties> = {
     resize: 'vertical' as const,
     fontFamily: 'inherit',
   },
+  // Power saving and slider styles
+  powerSavingOptions: {
+    marginTop: '1rem',
+    paddingTop: '1rem',
+    borderTop: '1px solid var(--border)',
+  },
+  subLabel: {
+    display: 'block',
+    fontSize: '0.85rem',
+    fontWeight: 500,
+    color: 'var(--text-secondary)',
+    marginBottom: '0.5rem',
+  },
+  infoBox: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '0.5rem',
+    marginTop: '1rem',
+    padding: '0.75rem 1rem',
+    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+    border: '1px solid rgba(0, 122, 255, 0.2)',
+    borderRadius: '8px',
+    fontSize: '0.85rem',
+    color: 'var(--text-secondary)',
+    lineHeight: 1.5,
+  },
+  infoIcon: {
+    fontSize: '1rem',
+    flexShrink: 0,
+  },
+  sliderContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.5rem',
+  },
+  sliderLabels: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.75rem',
+    color: 'var(--text-secondary)',
+  },
+  sliderLabelLeft: {
+    textAlign: 'left' as const,
+  },
+  sliderLabelRight: {
+    textAlign: 'right' as const,
+  },
+  sliderHint: {
+    fontSize: '0.8rem',
+    color: 'var(--text-secondary)',
+    marginTop: '0.25rem',
+  },
 };
 
 // Add global CSS for switch styling (checkboxes)
@@ -1473,6 +1845,10 @@ styleTag.textContent = `
     opacity: 0;
     width: 0;
     height: 0;
+  }
+  .settings-switch span {
+    background-color: #48484a;
+    border-color: #48484a;
   }
   .settings-switch input:checked + span {
     background-color: #34c759;

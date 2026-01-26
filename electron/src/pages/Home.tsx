@@ -104,7 +104,8 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    minHeight: '100vh',
+    height: '100%',
+    overflow: 'hidden',
     backgroundColor: 'var(--bg-primary)',
   },
   titlebar: {

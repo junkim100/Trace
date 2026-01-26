@@ -75,3 +75,4 @@ index/
 # PyInstaller / Electron builder
 electron/python-dist/
 electron/release/
+electron/.pyinstaller-build/

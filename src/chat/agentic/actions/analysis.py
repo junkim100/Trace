@@ -147,7 +147,7 @@ class ExtractPatterns(Action):
                     {"role": "user", "content": prompt},
                 ],
                 response_format={"type": "json_object"},
-                max_tokens=500,
+                max_completion_tokens=500,
                 temperature=0.3,
             )
 
@@ -385,7 +385,7 @@ Be specific and mention actual data values where relevant."""
                     {"role": "user", "content": prompt},
                 ],
                 response_format={"type": "json_object"},
-                max_tokens=500,
+                max_completion_tokens=500,
                 temperature=0.3,
             )
 

@@ -121,7 +121,7 @@ class QueryPlanner:
             model=PLANNER_MODEL,
             messages=messages,  # type: ignore
             response_format={"type": "json_object"},
-            max_tokens=2000,
+            max_completion_tokens=2000,
             temperature=0.2,  # Low temperature for consistent planning
         )
 

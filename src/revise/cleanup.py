@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from src.core.paths import DB_PATH, get_daily_cache_dirs
+from src.core.paths import (
+    CACHE_DIR,
+    DB_PATH,
+    cleanup_empty_cache_directories,
+    get_daily_cache_dirs,
+)
 from src.db.migrations import get_connection
 from src.revise.integrity import IntegrityChecker
 
@@ -135,6 +140,10 @@ class ArtifactCleaner:
             # Clean up database records
             if not dry_run:
                 self._cleanup_database_records(day)
+
+            # Clean up any empty directories in the cache
+            if not dry_run:
+                cleanup_empty_cache_directories(CACHE_DIR)
 
             # Log deletion
             if not dry_run:

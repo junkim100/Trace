@@ -149,6 +149,7 @@ export function Chat() {
               error={error}
               onCitationClick={setSelectedNoteId}
               onRetry={handleRetry}
+              onSuggestionClick={handleQuery}
             />
           </div>
           <ChatInput
@@ -172,7 +173,8 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    height: '100vh',
+    height: '100%',
+    overflow: 'hidden',
   },
   titlebar: {
     display: 'flex',

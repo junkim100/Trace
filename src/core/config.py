@@ -54,7 +54,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "daily_revision_hour": 3,
         "blocked_apps": [],
         "blocked_domains": [],
-        "power_saving_enabled": True,  # Reduce capture frequency on battery (P13-05)
+        "power_saving_mode": "automatic",  # "always_on", "automatic", "off"
+        "power_saving_threshold": 20,  # Battery % threshold for automatic mode
+        "power_saving_interval": 5,  # Capture interval in seconds during power saving
         "dedup_threshold": 5,  # Perceptual hash threshold for deduplication (P13-06)
         "jpeg_quality": 85,  # JPEG quality for screenshot compression (P13-07)
     },
@@ -82,6 +84,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "interests": "",
         "languages": "",
         "additional_info": "",
+    },
+    "updates": {
+        "check_on_launch": True,  # Check for updates when app starts
+        "check_periodically": True,  # Check for updates in background
+        "check_interval_hours": 24,  # Hours between periodic checks
+        "skipped_versions": [],  # Versions the user has chosen to skip
+        "last_check_timestamp": None,  # Last update check time (ms timestamp)
+        "remind_later_until": None,  # Remind later expiry (ms timestamp)
     },
 }
 

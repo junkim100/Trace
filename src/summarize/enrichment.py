@@ -172,7 +172,7 @@ If you cannot find relevant information, say "Additional context not available."
                         "content": f"Find information for: {query}",
                     },
                 ],
-                max_tokens=150,
+                max_completion_tokens=150,
             )
 
             result = response.choices[0].message.content or ""
@@ -231,7 +231,7 @@ If you cannot find relevant information, say "Additional context not available."
                         "content": f"Search: {query}",
                     },
                 ],
-                max_tokens=200,
+                max_completion_tokens=200,
             )
 
             result = response.choices[0].message.content or ""

@@ -345,6 +345,14 @@ export interface AllSettings {
     data: { retention_months: number | null };
     api_key: string | null;
     user_profile?: UserProfile;
+    updates?: {
+      check_on_launch: boolean;
+      check_periodically: boolean;
+      check_interval_hours: number;
+      skipped_versions: string[];
+      last_check_timestamp: number | null;
+      remind_later_until: number | null;
+    };
   };
   options: {
     summarization_intervals: number[];
@@ -377,6 +385,9 @@ export interface SettingsAPI {
 
   /** Set a single setting value by key path */
   setValue(key: string, value: unknown): Promise<{ success: boolean }>;
+
+  /** Get the stored API key */
+  getApiKey(): Promise<{ api_key: string | null; has_api_key: boolean }>;
 
   /** Set API key */
   setApiKey(apiKey: string): Promise<{ success: boolean }>;
@@ -798,6 +809,63 @@ export interface ShellAPI {
   openExternal(url: string): Promise<{ success: boolean }>;
 }
 
+/** Update asset (downloadable file) */
+export interface UpdateAsset {
+  name: string;
+  downloadUrl: string;
+  size: number;
+  contentType?: string;
+}
+
+/** Update information */
+export interface UpdateInfo {
+  available: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  releaseUrl: string;
+  releaseNotes: string;
+  releaseName?: string;
+  publishedAt: string;
+  assets: UpdateAsset[];
+  error?: string;
+}
+
+/** Update check result */
+export interface UpdateCheckResult {
+  checked: boolean;
+  available?: boolean;
+  skipped?: boolean;
+  reason?: string;
+  error?: string;
+  currentVersion?: string;
+  updateInfo?: UpdateInfo;
+}
+
+/** Update settings */
+export interface UpdateSettings {
+  check_on_launch: boolean;
+  check_periodically: boolean;
+  check_interval_hours: number;
+  skipped_versions: string[];
+  last_check_timestamp: number | null;
+  remind_later_until: number | null;
+}
+
+/** Updates API methods */
+export interface UpdatesAPI {
+  /** Check for updates */
+  check(options?: { silent?: boolean; force?: boolean }): Promise<UpdateCheckResult>;
+
+  /** Get cached update info */
+  getInfo(): Promise<UpdateInfo | null>;
+
+  /** Open release page in browser */
+  openReleasePage(url: string): Promise<{ success: boolean }>;
+
+  /** Listen for update available events */
+  onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void;
+}
+
 export interface TraceAPI {
   /** Ping the Electron main process */
   ping(): Promise<string>;
@@ -861,6 +929,9 @@ export interface TraceAPI {
 
   /** Installed apps (macOS) */
   apps: AppsAPI;
+
+  /** Auto-updates API */
+  updates: UpdatesAPI;
 }
 
 declare global {

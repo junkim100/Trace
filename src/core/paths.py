@@ -252,18 +252,57 @@ def delete_hourly_screenshot_dir(dt: datetime) -> bool:
             logger.error(f"Failed to delete legacy screenshots: {e}")
             return False
 
-    # 3. Check if the date directory is now empty, and delete it too
-    if date_dir.exists():
-        # Check if only .DS_Store remains (or truly empty)
-        remaining = [f for f in date_dir.iterdir() if f.name != ".DS_Store"]
-        if not remaining:
-            try:
-                shutil.rmtree(date_dir)
-                logger.info(f"Deleted empty date directory: {date_dir}")
-            except Exception as e:
-                logger.warning(f"Could not delete date directory: {e}")
+    # 3. Clean up empty directories in the screenshots cache
+    cleanup_empty_cache_directories(SCREENSHOTS_CACHE_DIR)
 
     return True
+
+
+def cleanup_empty_cache_directories(root_dir: Path) -> int:
+    """
+    Recursively remove empty directories under root_dir.
+
+    Walks bottom-up through the directory tree and removes any empty
+    directories (ignoring .DS_Store files). This handles cleanup when
+    days, months, or years change.
+
+    Args:
+        root_dir: The root directory to clean (e.g., SCREENSHOTS_CACHE_DIR)
+
+    Returns:
+        Number of directories removed
+    """
+    if not root_dir.exists():
+        return 0
+
+    removed_count = 0
+
+    # Walk bottom-up so we can remove child directories before checking parents
+    # Use sorted() with reverse=True to process deepest paths first
+    all_dirs = sorted(
+        [d for d in root_dir.rglob("*") if d.is_dir()],
+        key=lambda p: len(p.parts),
+        reverse=True,
+    )
+
+    for dir_path in all_dirs:
+        try:
+            # Check if directory is empty (ignoring .DS_Store)
+            contents = list(dir_path.iterdir())
+            non_ds_store = [f for f in contents if f.name != ".DS_Store"]
+
+            if not non_ds_store:
+                # Directory is empty or only has .DS_Store - remove it
+                shutil.rmtree(dir_path)
+                removed_count += 1
+                logger.debug(f"Removed empty directory: {dir_path}")
+        except Exception as e:
+            logger.warning(f"Could not remove directory {dir_path}: {e}")
+
+    if removed_count > 0:
+        logger.info(f"Cleaned up {removed_count} empty directories under {root_dir}")
+
+    return removed_count
 
 
 def get_all_screenshot_hours() -> list[datetime]:
@@ -477,6 +516,18 @@ if __name__ == "__main__":
         """Migrate data from legacy ~/Trace to new location."""
         return migrate_legacy_data(dry_run=dry_run)
 
+    def cleanup_empty():
+        """Clean up empty directories in the cache."""
+        screenshots_removed = cleanup_empty_cache_directories(SCREENSHOTS_CACHE_DIR)
+        text_buffers_removed = cleanup_empty_cache_directories(TEXT_BUFFERS_CACHE_DIR)
+        ocr_removed = cleanup_empty_cache_directories(OCR_CACHE_DIR)
+        return {
+            "screenshots_dirs_removed": screenshots_removed,
+            "text_buffers_dirs_removed": text_buffers_removed,
+            "ocr_dirs_removed": ocr_removed,
+            "total_removed": screenshots_removed + text_buffers_removed + ocr_removed,
+        }
+
     fire.Fire(
         {
             "init": init,
@@ -484,5 +535,6 @@ if __name__ == "__main__":
             "verify": verify,
             "check_migration": check_migration,
             "migrate": migrate,
+            "cleanup_empty": cleanup_empty,
         }
     )

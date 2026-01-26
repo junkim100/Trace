@@ -260,7 +260,8 @@ export function Graph() {
   return (
     <div style={styles.container}>
       <div className="titlebar" style={styles.titlebar}>
-        <button onClick={() => navigate(-1)} style={styles.backButton}>
+        <div style={styles.trafficLightSpacer} />
+        <button onClick={() => navigate('/chat')} style={styles.backButton}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M19 12H5" />
             <path d="M12 19l-7-7 7-7" />
@@ -500,7 +501,8 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    height: '100vh',
+    height: '100%',
+    overflow: 'hidden',
   },
   titlebar: {
     display: 'flex',
@@ -508,6 +510,10 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0 1rem',
     gap: '1rem',
     minHeight: '36px',
+  },
+  trafficLightSpacer: {
+    width: '60px', // Space for macOS traffic light buttons
+    flexShrink: 0,
   },
   backButton: {
     display: 'flex',

@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const readline = require('readline');
+const AutoUpdater = require('./updater');
 
 // Set app name and userData path to use "Trace" (capital T) consistently
 app.setName('Trace');
@@ -16,6 +17,7 @@ let pendingRequests = new Map(); // id -> { resolve, reject, timeout }
 let requestId = 0;
 let tray = null;
 let pythonReadline = null; // Readline interface for Python stdout (must be closed to prevent memory leak)
+let autoUpdater = null; // Auto-update manager
 
 // Get the data directory path (where notes, db, cache are stored)
 function getDataPath() {
@@ -291,8 +293,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    minWidth: 900,
+    minHeight: 700,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -660,6 +662,18 @@ app.whenReady().then(async () => {
     }
     if (pythonReady) {
       await loadSettingsFromConfig();
+
+      // Initialize auto-updater after backend is ready
+      try {
+        autoUpdater = new AutoUpdater({
+          pythonCall: callPython,
+        });
+        autoUpdater.setMainWindow(mainWindow);
+        await autoUpdater.initialize();
+        console.log('Auto-updater initialized successfully');
+      } catch (err) {
+        console.error('Failed to initialize auto-updater:', err);
+      }
     }
   };
   waitForBackendAndLoadSettings();
@@ -702,6 +716,28 @@ ipcMain.handle('ping', async () => {
 // App version handler
 ipcMain.handle('app:version', async () => {
   return app.getVersion();
+});
+
+// Auto-update handlers
+ipcMain.handle('updates:check', async (event, options = {}) => {
+  if (!autoUpdater) {
+    return { error: 'Updater not initialized' };
+  }
+  return autoUpdater.checkForUpdates(options);
+});
+
+ipcMain.handle('updates:getInfo', async () => {
+  if (!autoUpdater) {
+    return null;
+  }
+  return autoUpdater.getCachedInfo();
+});
+
+ipcMain.handle('updates:openReleasePage', async (event, url) => {
+  if (url) {
+    await shell.openExternal(url);
+  }
+  return { success: true };
 });
 
 // Python backend proxy handlers
