@@ -1973,10 +1973,23 @@ styleTag.textContent = `
   .settings-switch span {
     background-color: #48484a;
     border-color: #48484a;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .settings-switch:hover span {
+    background-color: #5a5a5c;
   }
   .settings-switch input:checked + span {
-    background-color: #34c759;
-    border-color: #34c759;
+    background-color: #007aff;
+    border-color: #007aff;
+    box-shadow: 0 0 12px rgba(0, 122, 255, 0.4);
+  }
+  .settings-switch:hover input:checked + span {
+    background-color: #0a84ff;
+    box-shadow: 0 0 16px rgba(0, 122, 255, 0.5);
+  }
+  .settings-switch input:focus + span {
+    outline: 2px solid rgba(0, 122, 255, 0.5);
+    outline-offset: 2px;
   }
   .settings-switch span:before {
     position: absolute;
@@ -1986,11 +1999,13 @@ styleTag.textContent = `
     left: 2px;
     bottom: 2px;
     background-color: white;
-    transition: .2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   }
   .settings-switch input:checked + span:before {
     transform: translateX(20px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 `;
 if (!document.head.querySelector('style[data-settings]')) {
