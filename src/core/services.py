@@ -355,6 +355,7 @@ class ServiceManager:
             self._hourly_scheduler = HourlyJobScheduler(
                 db_path=self.db_path,
                 api_key=self.api_key,
+                on_job_complete=self._on_hourly_job_complete,
             )
             self._hourly_scheduler.start()
 
@@ -372,6 +373,18 @@ class ServiceManager:
                 self._services["hourly"].state = ServiceState.FAILED
                 self._services["hourly"].last_error = str(e)
             return False
+
+    def _on_hourly_job_complete(self, result) -> None:
+        """
+        Callback when an hourly job completes.
+
+        Triggers backfill check to catch any other missing hours.
+        """
+        logger.debug(f"Hourly job completed: success={result.success}")
+
+        # Schedule a backfill check to catch any other missing hours
+        # This ensures we don't miss notes even if some hours failed
+        self._schedule_backfill_check()
 
     def _stop_hourly(self) -> None:
         """Stop the hourly scheduler."""
