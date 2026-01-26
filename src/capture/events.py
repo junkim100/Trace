@@ -227,6 +227,33 @@ class EventTracker:
         """Get the current active event."""
         return self._current_event
 
+    def checkpoint_current_event(self, end_ts: datetime | None = None) -> EventSpan | None:
+        """
+        Save the current event to database without closing it.
+
+        This allows the event to be included in queries while still being
+        active. Useful for long-running events where the user stays in
+        the same context.
+
+        Args:
+            end_ts: End timestamp to use (defaults to now)
+
+        Returns:
+            The checkpointed event, or None if no event was active
+        """
+        if self._current_event is None:
+            return None
+
+        if end_ts is None:
+            end_ts = datetime.now()
+
+        # Update end time for checkpoint
+        self._current_event.end_ts = end_ts
+        self._save_event(self._current_event)
+
+        logger.debug(f"Checkpointed event {self._current_event.event_id}")
+        return self._current_event
+
     def close_current_event(self, end_ts: datetime | None = None) -> EventSpan | None:
         """
         Force close the current event.

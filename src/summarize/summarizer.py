@@ -161,8 +161,10 @@ class HourlySummarizer:
         logger.debug("Aggregating evidence...")
         evidence = self.aggregator.aggregate(hour_start)
 
-        # Check if there's any activity - skip note creation if none
-        if evidence.total_events == 0:
+        # Check if there's any activity - skip note creation if no events AND no screenshots
+        # Note: Events may be 0 if user stayed in same context (no app/window switches)
+        # but screenshots capture activity, so we should still create notes
+        if evidence.total_events == 0 and evidence.total_screenshots == 0:
             logger.info(f"No activity for {hour_start.isoformat()}, skipping note creation")
             return SummarizationResult(
                 success=True,

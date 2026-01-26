@@ -173,6 +173,8 @@ class CaptureDaemon:
         self._on_battery = False
         self._last_power_check: float = 0
         self._power_check_interval = 30.0  # Check power status every 30 seconds
+        self._last_event_checkpoint: float = 0
+        self._event_checkpoint_interval = 60.0  # Checkpoint current event every 60 seconds
 
         # Shutdown handling
         self._shutdown_event = threading.Event()
@@ -308,6 +310,15 @@ class CaptureDaemon:
                 else:
                     logger.info("Switched to AC power. Normal capture interval restored.")
 
+    def _checkpoint_event_if_needed(self) -> None:
+        """Periodically checkpoint the current event to ensure it's saved to DB."""
+        current_time = time.time()
+        if current_time - self._last_event_checkpoint >= self._event_checkpoint_interval:
+            self._last_event_checkpoint = current_time
+            checkpointed = self._event_tracker.checkpoint_current_event()
+            if checkpointed:
+                logger.debug(f"Checkpointed event: {checkpointed.app_name}")
+
     def _run_loop(self) -> None:
         """Main capture loop."""
         import gc
@@ -330,6 +341,9 @@ class CaptureDaemon:
 
             # Check and update power status periodically
             self._update_power_status()
+
+            # Checkpoint current event periodically to ensure it's saved
+            self._checkpoint_event_if_needed()
 
             # CRITICAL: Wrap entire tick in autorelease pool
             # This ensures ALL PyObjC objects created during capture are
