@@ -124,6 +124,12 @@ export interface TimeFilter {
   description: string;
 }
 
+/** Follow-up question from chat */
+export interface FollowUpQuestion {
+  question: string;
+  category: string;
+}
+
 /** Chat response */
 export interface ChatResponse {
   answer: string;
@@ -135,6 +141,7 @@ export interface ChatResponse {
   query_type: string;
   confidence: number;
   processing_time_ms: number;
+  follow_up?: FollowUpQuestion | null;
 }
 
 /** Chat query options */
@@ -331,6 +338,9 @@ export interface AllSettings {
       blocked_apps: string[];
       blocked_domains: string[];
       power_saving_enabled?: boolean;
+      power_saving_mode?: 'off' | 'automatic' | 'always_on';
+      power_saving_threshold?: number;
+      power_saving_interval?: number;
       dedup_threshold?: number;
       jpeg_quality?: number;
     };
@@ -866,6 +876,87 @@ export interface UpdatesAPI {
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void;
 }
 
+/** User profile in memory */
+export interface MemoryProfile {
+  name?: string;
+  age?: string;
+  languages?: string;
+  location?: string;
+  occupation?: string;
+}
+
+/** User memory data */
+export interface UserMemory {
+  profile: MemoryProfile;
+  interests: string[];
+  preferences: string[];
+  important_facts: string[];
+  work_projects: string[];
+  learned_patterns: string[];
+  conversation_insights: string[];
+}
+
+/** Memory get response */
+export interface MemoryGetResponse {
+  success: boolean;
+  memory: UserMemory;
+}
+
+/** Memory context response */
+export interface MemoryContextResponse {
+  success: boolean;
+  context: string;
+}
+
+/** Memory raw response */
+export interface MemoryRawResponse {
+  success: boolean;
+  content: string;
+}
+
+/** Memory operation response */
+export interface MemoryOperationResponse {
+  success: boolean;
+  error?: string;
+}
+
+/** Memory learn response */
+export interface MemoryLearnResponse {
+  success: boolean;
+  extracted: string[];
+  error?: string;
+}
+
+/** Memory API methods */
+export interface MemoryAPI {
+  /** Get full user memory */
+  get(): Promise<MemoryGetResponse>;
+
+  /** Get memory context formatted for LLM */
+  getContext(): Promise<MemoryContextResponse>;
+
+  /** Get raw markdown content */
+  getRaw(): Promise<MemoryRawResponse>;
+
+  /** Update profile fields */
+  updateProfile(profile: Partial<MemoryProfile>): Promise<MemoryOperationResponse>;
+
+  /** Add an item to a section */
+  addItem(section: string, item: string): Promise<MemoryOperationResponse>;
+
+  /** Remove an item from a section */
+  removeItem(section: string, item: string): Promise<MemoryOperationResponse>;
+
+  /** Bulk update memory */
+  bulkUpdate(updates: Partial<UserMemory>): Promise<MemoryOperationResponse>;
+
+  /** Learn from a user's response to a follow-up question */
+  learnFromResponse(question: string, answer: string, context?: string): Promise<MemoryLearnResponse>;
+
+  /** Migrate profile from config to MEMORY.md */
+  migrateFromConfig(): Promise<{ success: boolean; migrated: boolean; message: string }>;
+}
+
 export interface TraceAPI {
   /** Ping the Electron main process */
   ping(): Promise<string>;
@@ -932,6 +1023,9 @@ export interface TraceAPI {
 
   /** Auto-updates API */
   updates: UpdatesAPI;
+
+  /** User memory API */
+  memory: MemoryAPI;
 }
 
 declare global {

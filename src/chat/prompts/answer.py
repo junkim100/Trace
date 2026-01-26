@@ -4,6 +4,8 @@ Answer Synthesis Prompt for Trace
 Generates grounded answers with citations based on retrieved notes
 and context. Uses the LLM to synthesize coherent responses.
 
+Includes user memory for personalized, engaging responses with follow-up questions.
+
 P7-05: Answer synthesis prompt
 """
 
@@ -23,8 +25,8 @@ logger = logging.getLogger(__name__)
 # Model for answer synthesis
 ANSWER_MODEL = "gpt-5.2-2025-12-11"
 
-# System prompt for answer synthesis
-SYSTEM_PROMPT = """You are a helpful assistant that answers questions about a user's digital activity history. You have access to notes that summarize their activities, and you should provide accurate, grounded answers based on this evidence.
+# System prompt for answer synthesis with memory and follow-up questions
+SYSTEM_PROMPT = """You are a helpful, personalized assistant that answers questions about a user's digital activity history. You have access to notes that summarize their activities, and you know things about the user from their memory profile.
 
 Guidelines:
 1. ALWAYS cite your sources using [Note: HH:00] format for hourly notes or [Note: YYYY-MM-DD] for daily notes
@@ -35,16 +37,37 @@ Guidelines:
 6. Use natural language, not bullet points unless listing items
 7. When relevant, mention the time context (e.g., "this morning", "last Tuesday")
 8. If asked about something not in the notes, acknowledge the limitation
+9. Use the user's name when appropriate to personalize the response
+10. Be engaging and conversational, not robotic
+
+IMPORTANT - Follow-up Questions:
+After answering, suggest ONE thoughtful follow-up question to learn more about the user or continue the conversation. The follow-up should:
+- Be relevant to what was discussed
+- Help you learn something useful about the user (interests, preferences, work, etc.)
+- Be optional and non-intrusive
+- Be phrased conversationally
+
+Format your response as:
+1. Your answer to the question (with citations)
+2. Then on a new line, a follow-up question starting with "💭 "
+
+Example:
+"You spent about 3 hours working on Python code in VS Code today [Note: 14:00]. Most of that time was focused on implementing the new API endpoint you mentioned.
+
+💭 Are you building this for a personal project or is it work-related?"
 
 Example citations:
 - "You spent 3 hours coding in VS Code [Note: 14:00]."
 - "On Monday, you focused primarily on Python development [Note: 2025-01-13]."
 """
 
-# User prompt template
+# User prompt template with memory context
 USER_PROMPT_TEMPLATE = """Question: {question}
 
 Time context: {time_context}
+
+## User Memory
+{memory_context}
 
 ## Relevant Notes
 
@@ -60,7 +83,8 @@ Time context: {time_context}
 
 ---
 
-Please answer the question based on the information above. Remember to cite your sources."""
+Please answer the question based on the information above. Remember to cite your sources.
+After your answer, include a thoughtful follow-up question starting with "💭 " to learn more about the user or continue the conversation."""
 
 
 @dataclass
@@ -72,6 +96,7 @@ class AnswerContext:
     notes: list[NoteMatch]
     aggregates: list[AggregateItem]
     related_entities: list[RelatedEntity]
+    memory_context: str = ""  # User memory context for personalization
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
@@ -81,6 +106,7 @@ class AnswerContext:
             "notes_count": len(self.notes),
             "aggregates_count": len(self.aggregates),
             "related_entities_count": len(self.related_entities),
+            "has_memory_context": bool(self.memory_context),
         }
 
 
@@ -104,24 +130,44 @@ class Citation:
 
 
 @dataclass
+class FollowUpQuestion:
+    """A follow-up question to learn more about the user."""
+
+    question: str
+    context: str = ""  # What triggered this question
+    category: str = ""  # What type of info it aims to learn (interest, preference, work, etc.)
+
+    def to_dict(self) -> dict:
+        return {
+            "question": self.question,
+            "context": self.context,
+            "category": self.category,
+        }
+
+
+@dataclass
 class SynthesizedAnswer:
-    """A synthesized answer with citations."""
+    """A synthesized answer with citations and follow-up question."""
 
     answer: str
     citations: list[Citation]
     confidence: float
     model: str
     context_used: AnswerContext
+    follow_up: FollowUpQuestion | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
-        return {
+        result = {
             "answer": self.answer,
             "citations": [c.to_dict() for c in self.citations],
             "confidence": self.confidence,
             "model": self.model,
             "context": self.context_used.to_dict(),
         }
+        if self.follow_up:
+            result["follow_up"] = self.follow_up.to_dict()
+        return result
 
 
 class AnswerPromptBuilder:
@@ -177,10 +223,16 @@ class AnswerPromptBuilder:
         # Build related entities context
         related_context = self._build_related_context(context.related_entities[: self.max_related])
 
+        # Use memory context if provided
+        memory_context = (
+            context.memory_context if context.memory_context else "No user memory available yet."
+        )
+
         # Format user prompt
         user_prompt = USER_PROMPT_TEMPLATE.format(
             question=context.question,
             time_context=time_context,
+            memory_context=memory_context,
             notes_context=notes_context,
             aggregates_context=aggregates_context,
             related_context=related_context,
@@ -280,6 +332,7 @@ def build_answer_prompt(
     time_filter: TimeFilter | None = None,
     aggregates: list[AggregateItem] | None = None,
     related_entities: list[RelatedEntity] | None = None,
+    memory_context: str = "",
 ) -> tuple[str, str, AnswerContext]:
     """
     Build an answer prompt from context.
@@ -290,6 +343,7 @@ def build_answer_prompt(
         time_filter: Time range filter
         aggregates: Optional aggregate data
         related_entities: Optional related entities
+        memory_context: Optional user memory context for personalization
 
     Returns:
         Tuple of (system_prompt, user_prompt, context)
@@ -300,12 +354,56 @@ def build_answer_prompt(
         notes=notes,
         aggregates=aggregates or [],
         related_entities=related_entities or [],
+        memory_context=memory_context,
     )
 
     builder = AnswerPromptBuilder()
     system_prompt, user_prompt = builder.build_prompt(context)
 
     return system_prompt, user_prompt, context
+
+
+def extract_follow_up_question(answer_text: str) -> tuple[str, FollowUpQuestion | None]:
+    """
+    Extract follow-up question from the answer text.
+
+    Args:
+        answer_text: Raw answer from LLM
+
+    Returns:
+        Tuple of (clean_answer, follow_up_question)
+    """
+    import re
+
+    # Look for follow-up question marker
+    follow_up_pattern = r"💭\s*(.+?)(?:\n|$)"
+    match = re.search(follow_up_pattern, answer_text)
+
+    if match:
+        follow_up_text = match.group(1).strip()
+        # Remove the follow-up from the main answer
+        clean_answer = re.sub(follow_up_pattern, "", answer_text).strip()
+
+        # Determine category based on keywords
+        category = "general"
+        follow_up_lower = follow_up_text.lower()
+        if any(word in follow_up_lower for word in ["work", "job", "project", "building"]):
+            category = "work"
+        elif any(word in follow_up_lower for word in ["hobby", "fun", "enjoy", "interest", "like"]):
+            category = "interests"
+        elif any(word in follow_up_lower for word in ["prefer", "rather", "better"]):
+            category = "preferences"
+        elif any(word in follow_up_lower for word in ["name", "call you"]):
+            category = "profile"
+
+        follow_up = FollowUpQuestion(
+            question=follow_up_text,
+            context="",
+            category=category,
+        )
+        return clean_answer, follow_up
+
+    return answer_text, None
 
 
 class AnswerSynthesizer:
@@ -345,6 +443,7 @@ class AnswerSynthesizer:
         time_filter: TimeFilter | None = None,
         aggregates: list[AggregateItem] | None = None,
         related_entities: list[RelatedEntity] | None = None,
+        include_memory: bool = True,
     ) -> SynthesizedAnswer:
         """
         Synthesize an answer to a question.
@@ -355,10 +454,21 @@ class AnswerSynthesizer:
             time_filter: Time range filter
             aggregates: Optional aggregate data
             related_entities: Optional related entities
+            include_memory: Whether to include user memory context
 
         Returns:
-            SynthesizedAnswer with the response and citations
+            SynthesizedAnswer with the response, citations, and follow-up question
         """
+        # Get user memory context if requested
+        memory_context = ""
+        if include_memory:
+            try:
+                from src.memory.memory import get_memory_context
+
+                memory_context = get_memory_context()
+            except Exception as e:
+                logger.debug(f"Could not load memory context: {e}")
+
         # Build prompt
         system_prompt, user_prompt, context = build_answer_prompt(
             question=question,
@@ -366,6 +476,7 @@ class AnswerSynthesizer:
             time_filter=time_filter,
             aggregates=aggregates,
             related_entities=related_entities,
+            memory_context=memory_context,
         )
 
         # Call LLM
@@ -377,11 +488,14 @@ class AnswerSynthesizer:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.3,
-                max_completion_tokens=1000,
+                temperature=0.4,  # Slightly higher for more engaging responses
+                max_completion_tokens=1200,  # Allow room for follow-up question
             )
 
-            answer = response.choices[0].message.content or ""
+            raw_answer = response.choices[0].message.content or ""
+
+            # Extract follow-up question from the answer
+            answer, follow_up = extract_follow_up_question(raw_answer)
 
             # Extract citations from the notes used
             builder = AnswerPromptBuilder()
@@ -396,6 +510,7 @@ class AnswerSynthesizer:
                 confidence=confidence,
                 model=self.model,
                 context_used=context,
+                follow_up=follow_up,
             )
 
         except Exception as e:

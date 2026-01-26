@@ -8,6 +8,9 @@ interface AnswerProps {
   onCitationClick?: (noteId: string) => void;
   onRetry?: () => void;
   onSuggestionClick?: (question: string) => void;
+  onFollowUpAnswer?: (question: string, answer: string) => void;
+  followUpInputValue?: string;
+  onFollowUpInputChange?: (value: string) => void;
 }
 
 // Example questions for the placeholder
@@ -68,7 +71,7 @@ function categorizeError(error: string): { type: 'network' | 'api' | 'timeout' |
   };
 }
 
-export function Answer({ response, loading = false, error = null, onCitationClick, onRetry, onSuggestionClick }: AnswerProps) {
+export function Answer({ response, loading = false, error = null, onCitationClick, onRetry, onSuggestionClick, onFollowUpAnswer, followUpInputValue = '', onFollowUpInputChange }: AnswerProps) {
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [loadingDots, setLoadingDots] = useState('');
 
@@ -264,6 +267,51 @@ export function Answer({ response, loading = false, error = null, onCitationClic
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {response.follow_up && onFollowUpAnswer && (
+        <div style={styles.followUp}>
+          <div style={styles.followUpHeader}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span style={styles.followUpLabel}>Getting to know you</span>
+          </div>
+          <p style={styles.followUpQuestion}>{response.follow_up.question}</p>
+          <div style={styles.followUpInputContainer}>
+            <input
+              type="text"
+              value={followUpInputValue}
+              onChange={(e) => onFollowUpInputChange?.(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && followUpInputValue.trim()) {
+                  onFollowUpAnswer(response.follow_up!.question, followUpInputValue.trim());
+                }
+              }}
+              placeholder="Your answer..."
+              style={styles.followUpInput}
+            />
+            <button
+              onClick={() => {
+                if (followUpInputValue.trim()) {
+                  onFollowUpAnswer(response.follow_up!.question, followUpInputValue.trim());
+                }
+              }}
+              disabled={!followUpInputValue.trim()}
+              style={{
+                ...styles.followUpButton,
+                ...(!followUpInputValue.trim() ? styles.followUpButtonDisabled : {}),
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
           </div>
         </div>
       )}
@@ -510,6 +558,63 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.85rem',
     color: 'var(--accent)',
     fontWeight: 500,
+  },
+  followUp: {
+    marginTop: '1rem',
+    padding: '1rem',
+    backgroundColor: 'rgba(0, 122, 255, 0.08)',
+    border: '1px solid rgba(0, 122, 255, 0.2)',
+    borderRadius: '12px',
+  },
+  followUpHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    marginBottom: '0.75rem',
+    color: 'var(--accent)',
+  },
+  followUpLabel: {
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+  },
+  followUpQuestion: {
+    fontSize: '0.95rem',
+    color: 'var(--text-primary)',
+    marginBottom: '0.75rem',
+    lineHeight: 1.5,
+  },
+  followUpInputContainer: {
+    display: 'flex',
+    gap: '0.5rem',
+  },
+  followUpInput: {
+    flex: 1,
+    backgroundColor: 'var(--bg-primary)',
+    border: '1px solid var(--border)',
+    borderRadius: '8px',
+    padding: '0.625rem 0.875rem',
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    outline: 'none',
+  },
+  followUpButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '40px',
+    height: '40px',
+    backgroundColor: 'var(--accent)',
+    border: 'none',
+    borderRadius: '8px',
+    color: 'white',
+    cursor: 'pointer',
+    transition: 'opacity 0.2s',
+  },
+  followUpButtonDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
   },
 };
 

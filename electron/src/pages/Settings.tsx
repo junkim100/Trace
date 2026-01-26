@@ -1223,12 +1223,14 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
+    height: '100%',
   },
   titlebar: {
     minHeight: '36px',
   },
   main: {
     flex: 1,
+    minHeight: 0,
     padding: '2rem',
     maxWidth: '600px',
     width: '100%',

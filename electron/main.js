@@ -373,7 +373,7 @@ let shortcuts = {
 
 // Store for appearance settings
 let appearanceSettings = {
-  showInDock: false,   // Default: OFF (menu bar only)
+  showInDock: true,    // Default: ON (required for menu bar to work)
   launchAtLogin: true, // Default: ON (start at login)
 };
 
@@ -385,8 +385,9 @@ async function loadSettingsFromConfig() {
     if (result) {
       // Load appearance settings
       if (result.appearance) {
+        // Default to true if not explicitly set to false
         appearanceSettings.showInDock = result.appearance.show_in_dock !== false;
-        appearanceSettings.launchAtLogin = result.appearance.launch_at_login === true;
+        appearanceSettings.launchAtLogin = result.appearance.launch_at_login !== false;
         applyDockVisibility();
         applyLaunchAtLogin();
       }

@@ -19,7 +19,7 @@ from src.chat.agentic.classifier import QueryClassifier
 from src.chat.agentic.executor import ExecutionResult, PlanExecutor
 from src.chat.agentic.planner import QueryPlanner
 from src.chat.agentic.schemas import QueryPlan
-from src.chat.prompts.answer import AnswerSynthesizer, Citation
+from src.chat.prompts.answer import AnswerSynthesizer, Citation, FollowUpQuestion
 from src.core.paths import DB_PATH
 from src.retrieval.aggregates import AggregateItem, AggregatesLookup
 from src.retrieval.graph import GraphExpander, RelatedEntity
@@ -59,6 +59,8 @@ class ChatResponse:
     plan_summary: str | None = None
     web_citations: list[dict] = field(default_factory=list)
     patterns: list[str] = field(default_factory=list)
+    # Follow-up question for engagement
+    follow_up: FollowUpQuestion | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
@@ -80,6 +82,9 @@ class ChatResponse:
             result["web_citations"] = self.web_citations
         if self.patterns:
             result["patterns"] = self.patterns
+        # Include follow-up question if present
+        if self.follow_up:
+            result["follow_up"] = self.follow_up.to_dict()
         return result
 
 
@@ -182,6 +187,7 @@ class ChatAPI:
             query_type=query_type,
             confidence=response["confidence"],
             processing_time_ms=processing_time,
+            follow_up=response.get("follow_up"),
         )
 
     def _handle_agentic_query(
@@ -436,6 +442,7 @@ class ChatAPI:
             "related_entities": [],
             "aggregates": result.items,
             "confidence": synthesized.confidence,
+            "follow_up": synthesized.follow_up,
         }
 
     def _handle_entity_query(
@@ -497,6 +504,7 @@ class ChatAPI:
             "related_entities": related_entities,
             "aggregates": agg_result.items,
             "confidence": synthesized.confidence,
+            "follow_up": synthesized.follow_up,
         }
 
     def _handle_timeline_query(
@@ -548,6 +556,7 @@ class ChatAPI:
             "related_entities": [],
             "aggregates": aggregates[:10],
             "confidence": synthesized.confidence,
+            "follow_up": synthesized.follow_up,
         }
 
     def _handle_semantic_query(
@@ -646,6 +655,7 @@ class ChatAPI:
             "related_entities": related_entities,
             "aggregates": aggregates,
             "confidence": synthesized.confidence,
+            "follow_up": synthesized.follow_up,
         }
 
     def _extract_entity_from_query(self, query: str) -> str | None:

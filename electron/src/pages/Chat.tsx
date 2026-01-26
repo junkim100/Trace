@@ -17,6 +17,7 @@ export function Chat() {
   const [customEnd, setCustomEnd] = useState<string>();
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const lastQueryRef = useRef<string>('');
+  const [followUpInput, setFollowUpInput] = useState('');
 
   const handleQuery = useCallback(async (query: string) => {
     lastQueryRef.current = query;
@@ -71,6 +72,19 @@ export function Chat() {
       handleQuery(lastQueryRef.current);
     }
   }, [handleQuery]);
+
+  const handleFollowUpAnswer = useCallback(async (question: string, answer: string) => {
+    try {
+      await window.traceAPI.memory.learnFromResponse(question, answer);
+      // Clear the follow-up input and remove the follow-up from the response
+      setFollowUpInput('');
+      if (response) {
+        setResponse({ ...response, follow_up: null });
+      }
+    } catch (err) {
+      console.error('Failed to save follow-up answer:', err);
+    }
+  }, [response]);
 
   return (
     <div style={styles.container}>
@@ -150,6 +164,9 @@ export function Chat() {
               onCitationClick={setSelectedNoteId}
               onRetry={handleRetry}
               onSuggestionClick={handleQuery}
+              onFollowUpAnswer={handleFollowUpAnswer}
+              followUpInputValue={followUpInput}
+              onFollowUpInputChange={setFollowUpInput}
             />
           </div>
           <ChatInput

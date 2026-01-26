@@ -26,7 +26,6 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 /* macOS window drag region - 52px provides clearance for traffic lights */

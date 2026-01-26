@@ -477,4 +477,44 @@ contextBridge.exposeInMainWorld('traceAPI', {
       return () => ipcRenderer.removeListener('updates:available', callback);
     },
   },
+
+  // User memory methods
+  memory: {
+    // Get full user memory
+    get: () => ipcRenderer.invoke('python:call', 'memory.get', {}),
+
+    // Get memory context formatted for LLM
+    getContext: () => ipcRenderer.invoke('python:call', 'memory.get_context', {}),
+
+    // Get raw markdown content
+    getRaw: () => ipcRenderer.invoke('python:call', 'memory.get_raw', {}),
+
+    // Update profile fields
+    updateProfile: (profile) =>
+      ipcRenderer.invoke('python:call', 'memory.update_profile', profile),
+
+    // Add an item to a section
+    addItem: (section, item) =>
+      ipcRenderer.invoke('python:call', 'memory.add_item', { section, item }),
+
+    // Remove an item from a section
+    removeItem: (section, item) =>
+      ipcRenderer.invoke('python:call', 'memory.remove_item', { section, item }),
+
+    // Bulk update memory
+    bulkUpdate: (updates) =>
+      ipcRenderer.invoke('python:call', 'memory.bulk_update', { updates }),
+
+    // Learn from a user's response to a follow-up question
+    learnFromResponse: (question, answer, context = '') =>
+      ipcRenderer.invoke('python:call', 'memory.learn_from_response', {
+        question,
+        answer,
+        context,
+      }),
+
+    // Migrate profile from config to MEMORY.md
+    migrateFromConfig: () =>
+      ipcRenderer.invoke('python:call', 'memory.migrate_from_config', {}),
+  },
 });
