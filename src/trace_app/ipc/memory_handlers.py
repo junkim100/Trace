@@ -7,7 +7,11 @@ frontend to interact with the user's memory (MEMORY.md).
 import logging
 from typing import Any
 
-from src.memory.memory import get_memory_manager
+from src.memory.memory import (
+    get_memory_manager,
+    is_memory_empty,
+    populate_memory_from_notes,
+)
 from src.trace_app.ipc.server import handler
 
 logger = logging.getLogger(__name__)
@@ -322,4 +326,45 @@ def handle_migrate_from_config(params: dict[str, Any]) -> dict[str, Any]:
         "migrated": True,
         "message": "Profile migrated to MEMORY.md",
         "fields": list(profile_data.keys()),
+    }
+
+
+@handler("memory.populate_from_notes")
+def handle_populate_from_notes(params: dict[str, Any]) -> dict[str, Any]:
+    """Populate memory by analyzing existing notes.
+
+    This uses LLM to extract user information from activity notes.
+
+    Params:
+        max_notes: Optional max number of notes to analyze (default 50)
+        force: If True, populate even if memory already has content
+
+    Returns:
+        Success status and population results.
+    """
+    max_notes = params.get("max_notes", 50)
+    force = params.get("force", False)
+
+    # Check if memory already has content
+    if not force and not is_memory_empty():
+        return {
+            "success": True,
+            "populated": False,
+            "message": "Memory already has content. Use force=True to repopulate.",
+        }
+
+    result = populate_memory_from_notes(max_notes=max_notes)
+    return result
+
+
+@handler("memory.is_empty")
+def handle_is_empty(params: dict[str, Any]) -> dict[str, Any]:
+    """Check if memory is empty.
+
+    Returns:
+        Success status and whether memory is empty.
+    """
+    return {
+        "success": True,
+        "is_empty": is_memory_empty(),
     }

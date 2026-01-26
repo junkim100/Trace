@@ -16,6 +16,7 @@ from pathlib import Path
 
 from src.core.paths import DB_PATH, get_all_screenshot_hours
 from src.db.migrations import get_connection
+from src.memory.memory import is_memory_empty, populate_memory_from_notes
 from src.platform.notifications import send_backfill_notification, send_error_notification
 from src.summarize.summarizer import HourlySummarizer, SummarizationResult
 
@@ -291,6 +292,20 @@ class BackfillDetector:
             send_backfill_notification(successful, "completed")
 
         logger.info(f"Backfill complete: {successful} successful, {failed} failed")
+
+        # Populate memory from notes if it's empty
+        if successful > 0 and is_memory_empty():
+            logger.info("Memory is empty, populating from notes...")
+            try:
+                memory_result = populate_memory_from_notes(api_key=self.api_key)
+                if memory_result.get("success"):
+                    logger.info(
+                        f"Memory populated: {memory_result.get('items_added', 0)} items added"
+                    )
+                else:
+                    logger.warning(f"Memory population failed: {memory_result.get('error')}")
+            except Exception as e:
+                logger.warning(f"Failed to populate memory: {e}")
 
         return BackfillResult(
             hours_checked=len(hours),

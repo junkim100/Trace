@@ -573,6 +573,208 @@ def get_memory_context() -> str:
     return get_user_memory().get_context_for_llm()
 
 
+def populate_memory_from_notes(api_key: str | None = None, max_notes: int = 50) -> dict:
+    """
+    Populate memory by analyzing existing notes.
+
+    This function reads notes from the database and uses an LLM to extract
+    user information such as interests, work projects, and patterns.
+
+    Args:
+        api_key: OpenAI API key (uses config if not provided)
+        max_notes: Maximum number of notes to analyze
+
+    Returns:
+        Dictionary with population results
+    """
+    import json
+
+    from openai import OpenAI
+
+    from src.core.config import get_api_key
+    from src.core.paths import DB_PATH
+    from src.db.migrations import get_connection
+
+    logger.info("Starting memory population from notes...")
+
+    # Get API key
+    if not api_key:
+        api_key = get_api_key()
+    if not api_key:
+        return {"success": False, "error": "No API key available"}
+
+    # Get notes from database
+    conn = get_connection(DB_PATH)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT note_id, note_type, json_payload
+            FROM notes
+            WHERE json_payload IS NOT NULL AND json_payload != ''
+            ORDER BY start_ts DESC
+            LIMIT ?
+            """,
+            (max_notes,),
+        )
+        rows = cursor.fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        return {"success": True, "message": "No notes found to analyze", "populated": False}
+
+    # Collect note summaries and entities
+    summaries = []
+    all_entities = []
+
+    for row in rows:
+        # Extract summary and entities from JSON payload
+        if row["json_payload"]:
+            try:
+                payload = json.loads(row["json_payload"])
+                summary = payload.get("summary", "")
+                if summary:
+                    summaries.append(summary)
+
+                entities = payload.get("entities", [])
+                for entity in entities:
+                    entity_name = entity.get("name", "")
+                    entity_type = entity.get("type", "")
+                    if entity_name and entity_type:
+                        all_entities.append(f"{entity_name} ({entity_type})")
+            except json.JSONDecodeError:
+                pass
+
+    if not summaries:
+        return {
+            "success": True,
+            "message": "No note summaries found to analyze",
+            "populated": False,
+        }
+
+    # Prepare context for LLM
+    notes_context = "\n\n".join(summaries[:30])  # Limit to avoid token overflow
+    entities_context = ", ".join(list(set(all_entities))[:50])
+
+    # Create prompt for LLM
+    extraction_prompt = f"""Analyze these activity notes from a personal tracking app and extract information about the user.
+
+ACTIVITY NOTES:
+{notes_context}
+
+DETECTED ENTITIES:
+{entities_context}
+
+Based on these notes, extract and return a JSON object with the following structure:
+{{
+    "interests": ["list of hobbies and interests you can infer"],
+    "work_projects": ["list of work projects or tasks they seem to be working on"],
+    "patterns": ["list of behavioral patterns you notice, e.g., 'Often works on coding projects in the afternoon'"],
+    "facts": ["list of important facts about the user, e.g., 'Uses macOS', 'Programs in Python'"],
+    "occupation_hint": "best guess at their occupation based on activity, or empty string if unclear"
+}}
+
+Be specific and factual. Only include things you can actually infer from the notes.
+Return ONLY valid JSON, no other text."""
+
+    # Call LLM
+    client = OpenAI(api_key=api_key)
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an assistant that extracts user information from activity notes. Return only valid JSON.",
+                },
+                {"role": "user", "content": extraction_prompt},
+            ],
+            temperature=0.3,
+            max_tokens=1000,
+        )
+
+        result_text = response.choices[0].message.content or ""
+
+        # Parse JSON from response
+        # Handle potential markdown code blocks
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0]
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0]
+
+        extracted = json.loads(result_text.strip())
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse LLM response: {e}")
+        return {"success": False, "error": f"Failed to parse LLM response: {e}"}
+    except Exception as e:
+        logger.error(f"LLM call failed: {e}")
+        return {"success": False, "error": str(e)}
+
+    # Update memory with extracted information
+    manager = get_memory_manager()
+    memory = manager.get_memory()
+
+    items_added = 0
+
+    # Add interests
+    for interest in extracted.get("interests", []):
+        if interest and interest not in memory.interests:
+            memory.interests.append(interest)
+            items_added += 1
+
+    # Add work projects
+    for project in extracted.get("work_projects", []):
+        if project and project not in memory.work_projects:
+            memory.work_projects.append(project)
+            items_added += 1
+
+    # Add patterns
+    for pattern in extracted.get("patterns", []):
+        if pattern and pattern not in memory.learned_patterns:
+            memory.learned_patterns.append(pattern)
+            items_added += 1
+
+    # Add facts
+    for fact in extracted.get("facts", []):
+        if fact and fact not in memory.important_facts:
+            memory.important_facts.append(fact)
+            items_added += 1
+
+    # Update occupation if we got a hint and don't have one
+    occupation_hint = extracted.get("occupation_hint", "")
+    if occupation_hint and not memory.profile.occupation:
+        memory.profile.occupation = occupation_hint
+        items_added += 1
+
+    # Save
+    manager.save()
+
+    logger.info(f"Memory population complete. Added {items_added} items.")
+
+    return {
+        "success": True,
+        "populated": True,
+        "notes_analyzed": len(rows),
+        "items_added": items_added,
+        "extracted": extracted,
+    }
+
+
+def is_memory_empty() -> bool:
+    """Check if memory has any content."""
+    memory = get_user_memory()
+    return (
+        not memory.profile.name
+        and not memory.profile.occupation
+        and not memory.interests
+        and not memory.work_projects
+        and not memory.learned_patterns
+        and not memory.important_facts
+    )
+
+
 if __name__ == "__main__":
     import fire
 
@@ -638,6 +840,16 @@ if __name__ == "__main__":
         """Get memory context for LLM."""
         return get_memory_context()
 
+    def populate(max_notes: int = 50, force: bool = False):
+        """Populate memory from existing notes using LLM."""
+        if not force and not is_memory_empty():
+            return {"message": "Memory already has content. Use --force to repopulate."}
+        return populate_memory_from_notes(max_notes=max_notes)
+
+    def is_empty():
+        """Check if memory is empty."""
+        return {"is_empty": is_memory_empty()}
+
     fire.Fire(
         {
             "show": show,
@@ -646,5 +858,7 @@ if __name__ == "__main__":
             "add": add,
             "remove": remove,
             "context": context,
+            "populate": populate,
+            "is_empty": is_empty,
         }
     )
