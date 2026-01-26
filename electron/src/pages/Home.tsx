@@ -108,7 +108,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'var(--bg-primary)',
   },
   titlebar: {
-    minHeight: '52px',
+    minHeight: '36px',
   },
   main: {
     flex: 1,

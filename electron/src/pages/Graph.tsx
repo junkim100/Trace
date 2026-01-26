@@ -507,7 +507,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     padding: '0 1rem',
     gap: '1rem',
-    minHeight: '52px',
+    minHeight: '36px',
   },
   backButton: {
     display: 'flex',

@@ -985,7 +985,7 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
   },
   titlebar: {
-    minHeight: '52px',
+    minHeight: '36px',
   },
   main: {
     flex: 1,
