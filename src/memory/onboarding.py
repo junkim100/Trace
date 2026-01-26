@@ -113,13 +113,13 @@ PHASE_PROMPTS = {
     ConversationPhase.GREETING: (
         "Hi! I'm Trace, your digital memory assistant. I'll help you keep track of "
         "your digital activities and turn them into searchable notes. Let's get to know "
-        "each other so I can personalize your experience."
+        "each other so I can personalize your experience. What should I call you?"
     ),
     ConversationPhase.NAME: "What should I call you?",
     ConversationPhase.OCCUPATION: "Nice to meet you{name_part}! What do you do? Feel free to share your role, industry, or what you're currently working on.",
     ConversationPhase.INTERESTS: "Great! What are you interested in or passionate about? Could be hobbies, topics you're learning, or professional interests.",
     ConversationPhase.OPEN_ENDED: "Is there anything else you'd like me to know about you? This could be tools you use, work preferences, goals, or anything that helps me understand you better.",
-    ConversationPhase.CONFIRMING: "Thanks for sharing{name_part}! I've learned a lot about you. Ready to continue setting up Trace?",
+    ConversationPhase.CONFIRMING: "Thanks for sharing{name_part}! I've learned a lot about you. You can always update this information later in Settings. Ready to continue?",
 }
 
 
@@ -358,8 +358,9 @@ Rules:
 
         # Determine next phase based on current phase
         if current_phase == ConversationPhase.GREETING:
-            next_phase = ConversationPhase.NAME.value
-            response = PHASE_PROMPTS[ConversationPhase.NAME]
+            # Greeting already asks for name, so skip to occupation
+            next_phase = ConversationPhase.OCCUPATION.value
+            response = PHASE_PROMPTS[ConversationPhase.OCCUPATION].format(name_part=name_part)
             should_advance = True
 
         elif current_phase == ConversationPhase.NAME:
@@ -378,21 +379,11 @@ Rules:
             should_advance = True
 
         elif current_phase == ConversationPhase.OPEN_ENDED:
-            # Count how many open-ended exchanges we've had
-            open_ended_count = sum(
-                1 for msg in history if msg.get("phase") == ConversationPhase.OPEN_ENDED.value
-            )
-
-            if completion_detected or open_ended_count >= 3:
-                # Move to confirming
-                next_phase = ConversationPhase.CONFIRMING.value
-                response = PHASE_PROMPTS[ConversationPhase.CONFIRMING].format(name_part=name_part)
-                should_advance = True
-            else:
-                # Stay in open-ended, generate dynamic response
-                next_phase = ConversationPhase.OPEN_ENDED.value
-                response = self._generate_dynamic_response(user_message, history, extracted)
-                should_advance = False
+            # After user answers the open-ended question, move to confirming
+            # Don't keep asking follow-up questions - let them know they can update later
+            next_phase = ConversationPhase.CONFIRMING.value
+            response = PHASE_PROMPTS[ConversationPhase.CONFIRMING].format(name_part=name_part)
+            should_advance = True
 
         elif current_phase == ConversationPhase.CONFIRMING:
             # Check if they're ready
@@ -424,9 +415,12 @@ Rules:
             should_advance = False
 
         # For update mode, handle differently
-        if mode == "update" and completion_detected:
+        if mode == "update" and next_phase == ConversationPhase.CONFIRMING.value:
             next_phase = ConversationPhase.COMPLETE.value
-            response = "Got it! I've updated your profile."
+            response = (
+                "Got it! I've updated your profile. You can come back here anytime to add more."
+            )
+            completion_detected = True
 
         return {
             "response": response,

@@ -283,8 +283,8 @@ function Permissions() {
       // Upgrade flow: API key already exists, go directly to chat
       navigate('/chat');
     } else {
-      // Fresh install: Navigate to user profile setup
-      navigate('/onboarding/profile');
+      // Fresh install: Navigate to API key setup first (required for profile chat)
+      navigate('/onboarding/api-key');
     }
   };
 

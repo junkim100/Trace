@@ -254,26 +254,12 @@ export const UserProfile: React.FC = () => {
   const [isComplete, setIsComplete] = useState(false);
   const [isReadyToContinue, setIsReadyToContinue] = useState(false);
   const [memorySummary, setMemorySummary] = useState<string | null>(null);
-  const [hasApiKey, setHasApiKey] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
-
-  // Check API key status
-  useEffect(() => {
-    const checkApiKey = async () => {
-      try {
-        const settings = await window.traceAPI.settings.get();
-        setHasApiKey(settings.has_api_key);
-      } catch {
-        // Ignore errors
-      }
-    };
-    checkApiKey();
-  }, []);
 
   // Initialize conversation
   useEffect(() => {
@@ -399,12 +385,9 @@ export const UserProfile: React.FC = () => {
     if (mode === 'update' || mode === 'restart') {
       // Return to settings for update/restart modes
       navigate('/settings');
-    } else if (hasApiKey) {
-      // Already has API key - go to chat
-      navigate('/chat');
     } else {
-      // New user - go to API key setup
-      navigate('/api-key');
+      // New user - go to completion (API key already set)
+      navigate('/onboarding/complete');
     }
   };
 
@@ -412,7 +395,7 @@ export const UserProfile: React.FC = () => {
     if (mode === 'update' || mode === 'restart') {
       navigate('/settings');
     } else {
-      navigate('/permissions');
+      navigate('/onboarding/api-key');
     }
   };
 
@@ -443,7 +426,7 @@ export const UserProfile: React.FC = () => {
 
   return (
     <OnboardingLayout
-      currentStep={mode === 'initial' ? 3 : undefined}
+      currentStep={mode === 'initial' ? 4 : undefined}
       totalSteps={mode === 'initial' ? 5 : undefined}
       showBack
       onBack={handleBack}

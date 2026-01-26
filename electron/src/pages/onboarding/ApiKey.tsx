@@ -174,9 +174,9 @@ export const ApiKey: React.FC = () => {
         await window.traceAPI.settings.setApiKey(apiKey);
         setIsValid(true);
 
-        // Navigate to completion page after a brief delay to show success
+        // Navigate to profile page after a brief delay to show success
         setTimeout(() => {
-          navigate('/onboarding/complete');
+          navigate('/onboarding/profile');
         }, 500);
       } else {
         setIsValid(false);
@@ -191,7 +191,7 @@ export const ApiKey: React.FC = () => {
   };
 
   const handleBack = () => {
-    navigate('/onboarding/profile');
+    navigate('/permissions');
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -215,7 +215,7 @@ export const ApiKey: React.FC = () => {
   };
 
   return (
-    <OnboardingLayout currentStep={4} totalSteps={5} showBack onBack={handleBack}>
+    <OnboardingLayout currentStep={3} totalSteps={5} showBack onBack={handleBack}>
       <h1 style={styles.title}>Connect to OpenAI</h1>
       <p style={styles.subtitle}>
         Trace uses OpenAI&apos;s API to analyze your activity<br />

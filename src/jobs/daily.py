@@ -26,6 +26,7 @@ from openai import OpenAI
 from src.core.paths import DB_PATH
 from src.db.migrations import get_connection
 from src.graph.edges import GraphEdgeBuilder
+from src.memory.daily_update import update_memory_from_daily_note
 from src.revise.aggregates import AggregatesComputer
 from src.revise.cleanup import ArtifactCleaner
 from src.revise.daily_note import DailyNoteGenerator
@@ -70,6 +71,7 @@ class DailyRevisionResult:
     aggregates_computed: int
     embeddings_refreshed: int
     cleanup_completed: bool
+    memory_items_added: int = 0
     error: str | None = None
 
 
@@ -285,6 +287,7 @@ class DailyJobExecutor:
                     "aggregates_computed": result.aggregates_computed,
                     "embeddings_refreshed": result.embeddings_refreshed,
                     "cleanup_completed": result.cleanup_completed,
+                    "memory_items_added": result.memory_items_added,
                 },
             )
 
@@ -400,6 +403,17 @@ class DailyJobExecutor:
                 f"Skipping cleanup - integrity check failed with {integrity_result.error_count} errors"
             )
 
+        # Step 11: Update MEMORY.md from daily note (clawdbot-inspired)
+        memory_items_added = 0
+        try:
+            logger.info("Step 11: Updating MEMORY.md from daily note")
+            memory_result = update_memory_from_daily_note(day, api_key=self._api_key)
+            memory_items_added = memory_result.get("items_added", 0)
+            if memory_items_added > 0:
+                logger.info(f"Added {memory_items_added} items to MEMORY.md")
+        except Exception as e:
+            logger.warning(f"Memory update failed (non-critical): {e}")
+
         return DailyRevisionResult(
             success=True,
             day=day_str,
@@ -410,6 +424,7 @@ class DailyJobExecutor:
             aggregates_computed=agg_result.total_aggregates,
             embeddings_refreshed=embed_result.refreshed_count,
             cleanup_completed=cleanup_completed,
+            memory_items_added=memory_items_added,
         )
 
     def _call_llm_for_revision(
@@ -755,6 +770,7 @@ if __name__ == "__main__":
             "aggregates": result.aggregates_computed,
             "embeddings": result.embeddings_refreshed,
             "cleanup": result.cleanup_completed,
+            "memory_items": result.memory_items_added,
             "error": result.error,
         }
 
