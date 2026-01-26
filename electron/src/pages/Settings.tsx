@@ -29,14 +29,13 @@ export function Settings() {
   const [appVersion, setAppVersion] = useState<string>('');
 
   // User profile state (legacy - keeping for migration)
-  const [userProfile, setUserProfile] = useState({
+  const [, setUserProfile] = useState({
     name: '',
     age: '',
     interests: '',
     languages: '',
     additional_info: '',
   });
-  const [profileSaving, setProfileSaving] = useState(false);
 
   // Memory state
   const [memorySummary, setMemorySummary] = useState<string>('');
@@ -61,6 +60,9 @@ export function Settings() {
     releaseUrl?: string;
     releaseNotes?: string;
   } | null>(null);
+
+  // Shortcuts state
+  const [shortcutsEnabled, setShortcutsEnabled] = useState(true);
 
   const loadBlocklist = async () => {
     setBlocklistLoading(true);
@@ -157,6 +159,11 @@ export function Settings() {
     // Load app version
     window.traceAPI.getVersion().then(setAppVersion).catch(() => {});
 
+    // Load shortcuts enabled state
+    window.traceAPI.shortcuts.isEnabled()
+      .then((result) => setShortcutsEnabled(result.enabled ?? true))
+      .catch(() => {});
+
     // Load user profile
     const loadUserProfile = async () => {
       try {
@@ -196,25 +203,6 @@ export function Settings() {
       }
     } catch (err) {
       console.error('Failed to load export summary:', err);
-    }
-  };
-
-  const handleProfileChange = (key: string, value: string) => {
-    setUserProfile(prev => ({ ...prev, [key]: value }));
-  };
-
-  const handleSaveProfile = async () => {
-    setProfileSaving(true);
-    setMessage(null);
-    try {
-      for (const [key, value] of Object.entries(userProfile)) {
-        await window.traceAPI.settings.setValue(`user_profile.${key}`, value);
-      }
-      setMessage({ type: 'success', text: 'Profile saved successfully' });
-    } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save profile' });
-    } finally {
-      setProfileSaving(false);
     }
   };
 
@@ -878,16 +866,47 @@ export function Settings() {
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Keyboard Shortcuts</h2>
           <div style={styles.field}>
+            <div style={styles.toggleRow}>
+              <div>
+                <label style={styles.label}>Enable Global Shortcuts</label>
+                <p style={styles.description}>Allow Trace to respond to keyboard shortcuts even when not focused.</p>
+              </div>
+              <label className="settings-switch" style={styles.switch}>
+                <input
+                  type="checkbox"
+                  checked={shortcutsEnabled}
+                  onChange={async (e) => {
+                    const enabled = e.target.checked;
+                    setShortcutsEnabled(enabled);
+                    await window.traceAPI.shortcuts.setEnabled(enabled);
+                    await handleSettingChange('shortcuts.enabled', enabled);
+                  }}
+                />
+                <span style={styles.switchSlider}></span>
+              </label>
+            </div>
+          </div>
+          <div style={{ ...styles.field, opacity: shortcutsEnabled ? 1 : 0.5 }}>
             <label style={styles.label}>Open Trace</label>
             <p style={styles.description}>Global shortcut to show/hide the Trace window.</p>
             <div style={styles.shortcutDisplay}>
               {settings?.config.shortcuts.open_trace?.replace('CommandOrControl', '⌘').replace('+', ' + ') ?? '⌘ + Shift + T'}
             </div>
           </div>
+          <div style={{ ...styles.field, opacity: shortcutsEnabled ? 1 : 0.5 }}>
+            <label style={styles.label}>Quick Capture</label>
+            <p style={styles.description}>Global shortcut to open Trace and focus the chat input.</p>
+            <div style={styles.shortcutDisplay}>⌘ + Shift + N</div>
+          </div>
           <div style={styles.field}>
             <label style={styles.label}>Open Settings</label>
-            <p style={styles.description}>Open settings from anywhere in the app.</p>
+            <p style={styles.description}>Open settings from anywhere in the app (works when Trace is focused).</p>
             <div style={styles.shortcutDisplay}>⌘ + ,</div>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Close Window</label>
+            <p style={styles.description}>Hide the Trace window (works when Trace is focused).</p>
+            <div style={styles.shortcutDisplay}>⌘ + W</div>
           </div>
         </section>
 
@@ -1402,9 +1421,6 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'var(--bg-secondary)',
-    border: '1px solid var(--border)',
-    transition: '.2s',
     borderRadius: '24px',
   },
   // Select styles
@@ -1971,41 +1987,28 @@ styleTag.textContent = `
     height: 0;
   }
   .settings-switch span {
-    background-color: #48484a;
-    border-color: #48484a;
+    background: linear-gradient(to right, #8e8e93, #a8a8ad);
+    border: none;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  .settings-switch:hover span {
-    background-color: #5a5a5c;
-  }
   .settings-switch input:checked + span {
-    background-color: #007aff;
-    border-color: #007aff;
-    box-shadow: 0 0 12px rgba(0, 122, 255, 0.4);
-  }
-  .settings-switch:hover input:checked + span {
-    background-color: #0a84ff;
-    box-shadow: 0 0 16px rgba(0, 122, 255, 0.5);
-  }
-  .settings-switch input:focus + span {
-    outline: 2px solid rgba(0, 122, 255, 0.5);
-    outline-offset: 2px;
+    background: linear-gradient(to right, #4a90d9, #5a9fe0);
   }
   .settings-switch span:before {
     position: absolute;
     content: "";
-    height: 18px;
-    width: 18px;
+    height: 20px;
+    width: 20px;
     left: 2px;
     bottom: 2px;
-    background-color: white;
+    background: linear-gradient(to bottom, #ffffff, #f0f0f0);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     border-radius: 50%;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    border: 0.5px solid rgba(0, 0, 0, 0.15);
   }
   .settings-switch input:checked + span:before {
     transform: translateX(20px);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 `;
 if (!document.head.querySelector('style[data-settings]')) {

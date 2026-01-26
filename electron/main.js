@@ -371,6 +371,9 @@ let shortcuts = {
   quickCapture: 'CommandOrControl+Shift+N',
 };
 
+// Whether global shortcuts are enabled
+let shortcutsEnabled = true;
+
 // Store for appearance settings
 let appearanceSettings = {
   showInDock: true,    // Default: ON (required for menu bar to work)
@@ -391,10 +394,20 @@ async function loadSettingsFromConfig() {
         applyDockVisibility();
         applyLaunchAtLogin();
       }
-      // Load shortcuts
-      if (result.shortcuts && result.shortcuts.open_trace) {
-        shortcuts.toggleWindow = result.shortcuts.open_trace;
+      // Load shortcuts settings
+      if (result.shortcuts) {
+        if (result.shortcuts.open_trace) {
+          shortcuts.toggleWindow = result.shortcuts.open_trace;
+        }
+        // Check if shortcuts are enabled (default true)
+        shortcutsEnabled = result.shortcuts.enabled !== false;
+      }
+      // Register shortcuts based on enabled state
+      if (shortcutsEnabled) {
         registerGlobalShortcuts();
+      } else {
+        globalShortcut.unregisterAll();
+        console.log('Global shortcuts disabled by user preference');
       }
     }
   } catch (err) {
@@ -793,8 +806,26 @@ ipcMain.handle('shortcuts:reset', () => {
     toggleWindow: 'CommandOrControl+Shift+T',
     quickCapture: 'CommandOrControl+Shift+N',
   };
-  registerGlobalShortcuts();
+  if (shortcutsEnabled) {
+    registerGlobalShortcuts();
+  }
   return getShortcuts();
+});
+
+ipcMain.handle('shortcuts:setEnabled', (event, enabled) => {
+  shortcutsEnabled = enabled;
+  if (enabled) {
+    registerGlobalShortcuts();
+    console.log('Global shortcuts enabled');
+  } else {
+    globalShortcut.unregisterAll();
+    console.log('Global shortcuts disabled');
+  }
+  return { success: true, enabled };
+});
+
+ipcMain.handle('shortcuts:isEnabled', () => {
+  return { enabled: shortcutsEnabled };
 });
 
 // Native permission handlers (these run in the Electron main process)

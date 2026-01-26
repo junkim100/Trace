@@ -351,7 +351,7 @@ export interface AllSettings {
       chat: string;
     };
     notifications: { weekly_digest_enabled: boolean; weekly_digest_day: string };
-    shortcuts: { open_trace: string };
+    shortcuts: { open_trace: string; enabled?: boolean };
     data: { retention_months: number | null };
     api_key: string | null;
     user_profile?: UserProfile;
@@ -463,6 +463,12 @@ export interface ShortcutsAPI {
 
   /** Reset shortcuts to defaults */
   reset(): Promise<ShortcutBindings>;
+
+  /** Enable or disable global shortcuts */
+  setEnabled(enabled: boolean): Promise<{ success: boolean; enabled: boolean }>;
+
+  /** Check if global shortcuts are enabled */
+  isEnabled(): Promise<{ enabled: boolean }>;
 
   /** Listen for quick capture shortcut events */
   onQuickCapture(callback: () => void): () => void;

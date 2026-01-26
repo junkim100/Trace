@@ -420,6 +420,12 @@ contextBridge.exposeInMainWorld('traceAPI', {
     // Reset shortcuts to defaults
     reset: () => ipcRenderer.invoke('shortcuts:reset'),
 
+    // Enable or disable global shortcuts
+    setEnabled: (enabled) => ipcRenderer.invoke('shortcuts:setEnabled', enabled),
+
+    // Check if global shortcuts are enabled
+    isEnabled: () => ipcRenderer.invoke('shortcuts:isEnabled'),
+
     // Listen for shortcut events (e.g., quickCapture)
     onQuickCapture: (callback) => {
       ipcRenderer.on('shortcut:quickCapture', callback);

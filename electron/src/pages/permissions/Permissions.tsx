@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { OnboardingLayout } from '../onboarding/OnboardingLayout';
 import type {
   AllPermissionsState,
   PermissionType,
@@ -299,111 +298,177 @@ function Permissions() {
 
   if (!window.traceAPI) {
     return (
-      <OnboardingLayout currentStep={2} totalSteps={5}>
-        <h1 style={styles.title}>Permissions</h1>
-        <p style={styles.subtitle}>Not running in Electron</p>
-      </OnboardingLayout>
+      <div style={styles.pageContainer}>
+        <div style={styles.titlebar} className="titlebar" />
+        <div style={styles.scrollContainer}>
+          <div style={styles.contentWrapper}>
+            <h1 style={styles.title}>Permissions</h1>
+            <p style={styles.subtitle}>Not running in Electron</p>
+          </div>
+        </div>
+      </div>
     );
   }
 
   if (!pythonReady) {
     return (
-      <OnboardingLayout currentStep={2} totalSteps={5}>
-        <div style={styles.loadingContainer}>
-          <div style={styles.spinner} />
-          <p style={styles.loadingText}>Connecting to backend...</p>
+      <div style={styles.pageContainer}>
+        <div style={styles.titlebar} className="titlebar" />
+        <div style={styles.scrollContainer}>
+          <div style={styles.contentWrapper}>
+            <div style={styles.loadingContainer}>
+              <div style={styles.spinner} />
+              <p style={styles.loadingText}>Connecting to backend...</p>
+            </div>
+          </div>
         </div>
-      </OnboardingLayout>
+      </div>
     );
   }
 
   return (
-    <OnboardingLayout
-      currentStep={isUpgrade ? 1 : 2}
-      totalSteps={isUpgrade ? 1 : 5}
-      showBack={!isUpgrade}
-      onBack={handleBack}
-    >
-      <h1 style={styles.title}>
-        {isUpgrade ? 'Re-grant Permissions' : 'Grant Permissions'}
-      </h1>
-      <p style={styles.subtitle}>
-        {isUpgrade
-          ? 'After updating Trace, macOS requires you to re-grant permissions.'
-          : 'Trace needs these permissions to capture your digital activity.'}
-      </p>
+    <div style={styles.pageContainer}>
+      <div style={styles.titlebar} className="titlebar" />
 
-      {error && (
-        <div style={styles.errorCard}>
-          <p style={styles.errorText}>{error}</p>
-        </div>
-      )}
-
-      <div style={styles.permissionsList}>
-        {permissionsState && (
-          <>
-            <PermissionCard
-              permission={permissionsState.screen_recording}
-              instructions={instructions.screen_recording}
-              onOpenSettings={() => handleOpenSettings('screen_recording')}
-              isLoading={isLoading}
-              icon={PermissionIcons.screen_recording}
-            />
-
-            <PermissionCard
-              permission={permissionsState.accessibility}
-              instructions={instructions.accessibility}
-              onOpenSettings={() => handleOpenSettings('accessibility')}
-              onRequest={handleRequestAccessibility}
-              isLoading={isLoading}
-              icon={PermissionIcons.accessibility}
-            />
-
-            <PermissionCard
-              permission={permissionsState.location}
-              instructions={instructions.location}
-              onOpenSettings={() => handleOpenSettings('location')}
-              onRequest={handleRequestLocation}
-              isLoading={isLoading}
-              icon={PermissionIcons.location}
-            />
-          </>
-        )}
-      </div>
-
-      <div style={styles.footer}>
+      {!isUpgrade && (
         <button
-          style={{
-            ...styles.continueButton,
-            opacity: requiredGranted ? 1 : 0.5,
-            cursor: requiredGranted ? 'pointer' : 'not-allowed',
-          }}
-          onClick={handleContinue}
-          disabled={!requiredGranted}
+          style={styles.backButton}
+          className="no-drag"
+          onClick={handleBack}
         >
-          {requiredGranted
-            ? (isUpgrade ? 'Continue to Trace' : 'Next')
-            : 'Grant Required Permissions'}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          Back
         </button>
-
-        {isActivelyWaiting && !requiredGranted && (
-          <div style={styles.pollingIndicator}>
-            <span style={styles.pollingDot} />
-            Checking for permission changes...
-          </div>
-        )}
-      </div>
-
-      {permissionsState?.requires_restart && (
-        <p style={styles.restartNote}>
-          Some permissions may require restarting Trace to take effect.
-        </p>
       )}
-    </OnboardingLayout>
+
+      <div style={styles.scrollContainer}>
+        <div style={styles.contentWrapper}>
+          <h1 style={styles.title}>
+            {isUpgrade ? 'Re-grant Permissions' : 'Grant Permissions'}
+          </h1>
+          <p style={styles.subtitle}>
+            {isUpgrade
+              ? 'After updating Trace, macOS requires you to re-grant permissions.'
+              : 'Trace needs these permissions to capture your digital activity.'}
+          </p>
+
+          {error && (
+            <div style={styles.errorCard}>
+              <p style={styles.errorText}>{error}</p>
+            </div>
+          )}
+
+          <div style={styles.permissionsList}>
+            {permissionsState && (
+              <>
+                <PermissionCard
+                  permission={permissionsState.screen_recording}
+                  instructions={instructions.screen_recording}
+                  onOpenSettings={() => handleOpenSettings('screen_recording')}
+                  isLoading={isLoading}
+                  icon={PermissionIcons.screen_recording}
+                />
+
+                <PermissionCard
+                  permission={permissionsState.accessibility}
+                  instructions={instructions.accessibility}
+                  onOpenSettings={() => handleOpenSettings('accessibility')}
+                  onRequest={handleRequestAccessibility}
+                  isLoading={isLoading}
+                  icon={PermissionIcons.accessibility}
+                />
+
+                <PermissionCard
+                  permission={permissionsState.location}
+                  instructions={instructions.location}
+                  onOpenSettings={() => handleOpenSettings('location')}
+                  onRequest={handleRequestLocation}
+                  isLoading={isLoading}
+                  icon={PermissionIcons.location}
+                />
+              </>
+            )}
+          </div>
+
+          <div style={styles.footer}>
+            <button
+              style={{
+                ...styles.continueButton,
+                opacity: requiredGranted ? 1 : 0.5,
+                cursor: requiredGranted ? 'pointer' : 'not-allowed',
+              }}
+              onClick={handleContinue}
+              disabled={!requiredGranted}
+            >
+              {requiredGranted
+                ? (isUpgrade ? 'Continue to Trace' : 'Next')
+                : 'Grant Required Permissions'}
+            </button>
+
+            {isActivelyWaiting && !requiredGranted && (
+              <div style={styles.pollingIndicator}>
+                <span style={styles.pollingDot} />
+                Checking for permission changes...
+              </div>
+            )}
+          </div>
+
+          {permissionsState?.requires_restart && (
+            <p style={styles.restartNote}>
+              Some permissions may require restarting Trace to take effect.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  pageContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    backgroundColor: 'var(--bg-primary)',
+    color: 'var(--text-primary)',
+  },
+  titlebar: {
+    minHeight: 36,
+    backgroundColor: 'transparent',
+    flexShrink: 0,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 44,
+    left: 20,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 16px',
+    backgroundColor: 'transparent',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    color: 'var(--text-secondary)',
+    fontSize: 14,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    zIndex: 10,
+  },
+  scrollContainer: {
+    flex: 1,
+    overflowY: 'auto',
+    minHeight: 0,
+    padding: '20px 40px 40px 40px',
+  },
+  contentWrapper: {
+    maxWidth: 500,
+    margin: '0 auto',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
   title: {
     fontSize: 28,
     fontWeight: 700,

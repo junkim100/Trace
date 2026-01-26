@@ -2,8 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface OnboardingLayoutProps {
-  currentStep: number;
-  totalSteps: number;
+  currentStep?: number;
+  totalSteps?: number;
   children: React.ReactNode;
   showBack?: boolean;
   onBack?: () => void;
@@ -14,9 +14,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    overflow: 'hidden',
     backgroundColor: 'var(--bg-primary)',
     color: 'var(--text-primary)',
+    overflow: 'hidden',
   },
   titlebar: {
     minHeight: 36,
@@ -28,9 +28,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: '0 40px 40px 40px',
+    justifyContent: 'flex-start',
+    padding: '20px 40px 40px 40px',
     animation: 'fadeIn 0.4s ease-out',
+    overflow: 'auto',
   },
   stepIndicator: {
     display: 'flex',
@@ -81,6 +82,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
+    flexShrink: 0,
   },
 };
 
@@ -127,18 +129,20 @@ export const OnboardingLayout: React.FC<OnboardingLayoutProps> = ({
       )}
 
       <div style={styles.content} className="onboarding-fade-in">
-        <div style={styles.stepIndicator}>
-          {Array.from({ length: totalSteps }, (_, i) => {
-            const stepNum = i + 1;
-            let dotStyle = styles.stepDot;
-            if (stepNum < currentStep) {
-              dotStyle = styles.stepDotCompleted;
-            } else if (stepNum === currentStep) {
-              dotStyle = styles.stepDotActive;
-            }
-            return <div key={i} style={dotStyle} />;
-          })}
-        </div>
+        {currentStep !== undefined && totalSteps !== undefined && (
+          <div style={styles.stepIndicator}>
+            {Array.from({ length: totalSteps }, (_, i) => {
+              const stepNum = i + 1;
+              let dotStyle = styles.stepDot;
+              if (stepNum < currentStep) {
+                dotStyle = styles.stepDotCompleted;
+              } else if (stepNum === currentStep) {
+                dotStyle = styles.stepDotActive;
+              }
+              return <div key={i} style={dotStyle} />;
+            })}
+          </div>
+        )}
 
         <div style={styles.childrenWrapper}>
           {children}
