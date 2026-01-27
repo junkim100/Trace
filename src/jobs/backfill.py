@@ -79,6 +79,9 @@ class BackfillDetector:
         1. Hours with screenshots/events in the database
         2. Hours with screenshot directories on disk (e.g., after restart before DB sync)
 
+        Also checks the jobs table to skip hours that were already processed
+        (even if no note was created because the hour was skipped).
+
         Returns:
             List of hour start times that need backfilling (oldest first)
         """
@@ -124,6 +127,18 @@ class BackfillDetector:
             except Exception as e:
                 logger.warning(f"Error scanning screenshot directories: {e}")
 
+            # Find hours that have been successfully processed (even if no note created)
+            # This prevents the backfill loop where skipped hours are retried repeatedly
+            cursor.execute(
+                """
+                SELECT window_start_ts
+                FROM jobs
+                WHERE job_type = 'hourly'
+                AND status = 'success'
+                """
+            )
+            hours_already_processed = {row[0] for row in cursor.fetchall()}
+
             # Combine all sources of activity hours
             all_activity_hours = hours_with_screenshots | hours_with_events | hours_with_dirs
 
@@ -131,7 +146,8 @@ class BackfillDetector:
                 f"Found {len(all_activity_hours)} hours with activity "
                 f"(db_screenshots: {len(hours_with_screenshots)}, "
                 f"db_events: {len(hours_with_events)}, "
-                f"disk_dirs: {len(hours_with_dirs)})"
+                f"disk_dirs: {len(hours_with_dirs)}), "
+                f"{len(hours_already_processed)} already processed"
             )
 
             # Check each hour for missing notes
@@ -143,6 +159,10 @@ class BackfillDetector:
 
                 # Skip current hour (still accumulating)
                 if hour_start >= current_hour:
+                    continue
+
+                # Skip if already successfully processed (even if no note was created)
+                if hour_start.isoformat() in hours_already_processed:
                     continue
 
                 # Check if note exists
@@ -209,6 +229,85 @@ class BackfillDetector:
 
         return has_activity
 
+    def _record_backfill_job(self, hour_start: datetime, result: SummarizationResult) -> None:
+        """
+        Record a backfill job in the jobs table.
+
+        This prevents the same hour from being re-processed on future backfill runs,
+        even if no note was created (e.g., hour was skipped due to insufficient activity).
+        """
+        import json
+        import uuid
+
+        hour_end = hour_start + timedelta(hours=1)
+        job_id = str(uuid.uuid4())
+        status = "success" if result.success else "failed"
+
+        result_json = json.dumps(
+            {
+                "note_id": result.note_id,
+                "file_path": str(result.file_path) if result.file_path else None,
+                "backfill": True,
+            }
+        )
+
+        conn = get_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+
+            # Check if job already exists for this hour
+            cursor.execute(
+                """
+                SELECT job_id FROM jobs
+                WHERE job_type = 'hourly'
+                AND window_start_ts = ?
+                """,
+                (hour_start.isoformat(),),
+            )
+            existing = cursor.fetchone()
+
+            if existing:
+                # Update existing job
+                cursor.execute(
+                    """
+                    UPDATE jobs
+                    SET status = ?, result_json = ?, last_error = ?, updated_ts = ?
+                    WHERE job_id = ?
+                    """,
+                    (
+                        status,
+                        result_json,
+                        result.error,
+                        datetime.now().isoformat(),
+                        existing["job_id"],
+                    ),
+                )
+            else:
+                # Create new job record
+                cursor.execute(
+                    """
+                    INSERT INTO jobs
+                    (job_id, job_type, window_start_ts, window_end_ts, status, attempts,
+                     result_json, last_error, created_ts, updated_ts)
+                    VALUES (?, 'hourly', ?, ?, ?, 1, ?, ?, ?, ?)
+                    """,
+                    (
+                        job_id,
+                        hour_start.isoformat(),
+                        hour_end.isoformat(),
+                        status,
+                        result_json,
+                        result.error,
+                        datetime.now().isoformat(),
+                        datetime.now().isoformat(),
+                    ),
+                )
+
+            conn.commit()
+            logger.debug(f"Recorded backfill job for {hour_start.isoformat()}: {status}")
+        finally:
+            conn.close()
+
     def trigger_backfill(
         self,
         hours: list[datetime] | None = None,
@@ -267,6 +366,9 @@ class BackfillDetector:
                 result = summarizer.summarize_hour(hour, force=False)
                 results.append(result)
 
+                # Record this hour as processed in the jobs table to prevent re-processing
+                self._record_backfill_job(hour, result)
+
                 if result.success:
                     successful += 1
                     logger.info(f"Successfully backfilled {hour.isoformat()}")
@@ -282,6 +384,11 @@ class BackfillDetector:
             except Exception as e:
                 failed += 1
                 logger.error(f"Exception during backfill for {hour.isoformat()}: {e}")
+                # Record the failed attempt
+                self._record_backfill_job(
+                    hour,
+                    SummarizationResult(success=False, note_id=None, file_path=None, error=str(e)),
+                )
                 if notify:
                     send_error_notification(
                         f"Backfill error for {hour.strftime('%H:%M')}",
