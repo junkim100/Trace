@@ -590,6 +590,219 @@ def cleanup_empty_notes(db_path: Path | str | None = None, dry_run: bool = True)
     }
 
 
+@dataclass
+class DailyBackfillResult:
+    """Result of a daily backfill operation."""
+
+    days_checked: int
+    days_missing: int
+    days_backfilled: int
+    days_failed: int
+
+
+class DailyBackfillDetector:
+    """
+    Detects and fills gaps in daily notes.
+
+    Finds days that have hourly notes but no daily note, and triggers
+    the daily revision pipeline to create them.
+    """
+
+    def __init__(
+        self,
+        db_path: Path | str | None = None,
+        api_key: str | None = None,
+    ):
+        """
+        Initialize the daily backfill detector.
+
+        Args:
+            db_path: Path to SQLite database
+            api_key: OpenAI API key for daily revision
+        """
+        self.db_path = Path(db_path) if db_path else DB_PATH
+        self.api_key = api_key
+
+    def find_missing_days(self) -> list[datetime]:
+        """
+        Find all days with hourly notes but no daily note.
+
+        Returns:
+            List of days that need daily backfilling (oldest first)
+        """
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        missing = []
+
+        conn = get_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+
+            # Find all days that have hourly notes
+            cursor.execute(
+                """
+                SELECT DISTINCT date(start_ts) as day_date
+                FROM notes
+                WHERE note_type = 'hour'
+                AND date(start_ts) < date(?)
+                ORDER BY day_date
+                """,
+                (today.isoformat(),),
+            )
+            days_with_hourly_notes = {row[0] for row in cursor.fetchall()}
+
+            # Find all days that have daily notes
+            cursor.execute(
+                """
+                SELECT DISTINCT date(start_ts) as day_date
+                FROM notes
+                WHERE note_type = 'day'
+                """
+            )
+            days_with_daily_notes = {row[0] for row in cursor.fetchall()}
+
+            # Find days that have been successfully processed (even if no note created)
+            cursor.execute(
+                """
+                SELECT date(window_start_ts) as day_date
+                FROM jobs
+                WHERE job_type = 'daily'
+                AND status = 'success'
+                """
+            )
+            days_already_processed = {row[0] for row in cursor.fetchall()}
+
+            # Find missing days: have hourly notes but no daily note and not processed
+            for day_str in sorted(days_with_hourly_notes):
+                if day_str in days_with_daily_notes:
+                    continue
+                if day_str in days_already_processed:
+                    # Check if daily note actually exists despite "success" status
+                    # (handles the bug where success was returned without creating note)
+                    cursor.execute(
+                        """
+                        SELECT 1 FROM notes
+                        WHERE note_type = 'day' AND date(start_ts) = ?
+                        LIMIT 1
+                        """,
+                        (day_str,),
+                    )
+                    if cursor.fetchone() is not None:
+                        continue
+                    # Job marked success but no note - needs reprocessing
+
+                try:
+                    day = datetime.strptime(day_str, "%Y-%m-%d")
+                    # Don't backfill today (not complete yet)
+                    if day >= today:
+                        continue
+                    missing.append(day)
+                    logger.debug(f"Found missing daily note for: {day_str}")
+                except ValueError:
+                    continue
+
+        finally:
+            conn.close()
+
+        if missing:
+            logger.info(f"Found {len(missing)} days with hourly notes but no daily note")
+
+        return missing
+
+    def trigger_daily_backfill(
+        self,
+        days: list[datetime] | None = None,
+        notify: bool = True,
+        max_days: int = 5,
+    ) -> DailyBackfillResult:
+        """
+        Generate daily notes for missing days.
+
+        Args:
+            days: List of days to backfill (uses find_missing_days if not provided)
+            notify: Whether to send macOS notifications
+            max_days: Maximum days to backfill in this run
+
+        Returns:
+            DailyBackfillResult with statistics
+        """
+        from src.jobs.daily import DailyJobExecutor
+
+        if days is None:
+            days = self.find_missing_days()
+
+        if not days:
+            logger.info("No days to backfill")
+            return DailyBackfillResult(
+                days_checked=0,
+                days_missing=0,
+                days_backfilled=0,
+                days_failed=0,
+            )
+
+        # Limit the number of days to backfill in one run
+        days_to_process = sorted(days)[:max_days]
+        remaining = len(days) - len(days_to_process)
+
+        if remaining > 0:
+            logger.info(
+                f"Backfilling {len(days_to_process)} days "
+                f"({remaining} more will be processed in next run)"
+            )
+
+        if notify:
+            send_backfill_notification(len(days_to_process), "daily_started")
+
+        logger.info(f"Starting daily backfill for {len(days_to_process)} days")
+
+        executor = DailyJobExecutor(db_path=self.db_path, api_key=self.api_key)
+        successful = 0
+        failed = 0
+
+        # Process in chronological order
+        for day in days_to_process:
+            day_str = day.strftime("%Y-%m-%d")
+            logger.info(f"Backfilling daily note for {day_str}")
+
+            try:
+                job_id = executor.create_pending_job(day)
+                result = executor.execute_job(job_id)
+
+                if result.success and result.hourly_notes_count > 0:
+                    successful += 1
+                    logger.info(f"Successfully backfilled daily note for {day_str}")
+                elif result.hourly_notes_count == 0:
+                    logger.info(f"No hourly notes for {day_str}, skipping")
+                else:
+                    failed += 1
+                    logger.error(f"Failed to backfill daily note for {day_str}: {result.error}")
+                    if notify:
+                        send_error_notification(
+                            f"Daily backfill failed for {day_str}",
+                            result.error,
+                        )
+
+            except Exception as e:
+                failed += 1
+                logger.error(f"Exception during daily backfill for {day_str}: {e}")
+                if notify:
+                    send_error_notification(
+                        f"Daily backfill error for {day_str}",
+                        str(e),
+                    )
+
+        if notify and successful > 0:
+            send_backfill_notification(successful, "daily_completed")
+
+        logger.info(f"Daily backfill complete: {successful} successful, {failed} failed")
+
+        return DailyBackfillResult(
+            days_checked=len(days),
+            days_missing=len(days),
+            days_backfilled=successful,
+            days_failed=failed,
+        )
+
+
 if __name__ == "__main__":
     import fire
 
@@ -601,6 +814,16 @@ if __name__ == "__main__":
         return {
             "missing_hours": len(missing),
             "hours": [h.isoformat() for h in missing],
+        }
+
+    def check_daily(db_path: str | None = None):
+        """Check for ALL missing daily notes without backfilling."""
+        detector = DailyBackfillDetector(db_path=db_path)
+        missing = detector.find_missing_days()
+
+        return {
+            "missing_days": len(missing),
+            "days": [d.strftime("%Y-%m-%d") for d in missing],
         }
 
     def backfill(
@@ -632,4 +855,31 @@ if __name__ == "__main__":
         """
         return cleanup_empty_notes(db_path=db_path, dry_run=dry_run)
 
-    fire.Fire({"check": check, "backfill": backfill, "cleanup": cleanup})
+    def backfill_daily(
+        db_path: str | None = None,
+        notify: bool = False,
+        max_days: int = 5,
+    ):
+        """Find and backfill missing daily notes."""
+        from src.core.config import get_api_key
+
+        api_key = get_api_key()
+        detector = DailyBackfillDetector(db_path=db_path, api_key=api_key)
+        result = detector.trigger_daily_backfill(notify=notify, max_days=max_days)
+
+        return {
+            "days_checked": result.days_checked,
+            "days_missing": result.days_missing,
+            "days_backfilled": result.days_backfilled,
+            "days_failed": result.days_failed,
+        }
+
+    fire.Fire(
+        {
+            "check": check,
+            "check_daily": check_daily,
+            "backfill": backfill,
+            "backfill_daily": backfill_daily,
+            "cleanup": cleanup,
+        }
+    )
