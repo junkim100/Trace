@@ -84,6 +84,25 @@ export interface Citation {
   timestamp: string;
 }
 
+/** v0.8.0: Unified citation for both notes and web sources */
+export interface UnifiedCitation {
+  id: string;  // Citation number (e.g., "1", "2")
+  type: 'note' | 'web';
+  label: string;
+
+  // Note-specific fields
+  note_id?: string;
+  note_type?: 'hourly' | 'daily';
+  timestamp?: string;
+  note_content?: string;  // Snippet for popup preview
+
+  // Web-specific fields
+  url?: string;
+  title?: string;
+  snippet?: string;
+  accessed_at?: string;
+}
+
 /** Note match from search */
 export interface NoteMatch {
   note_id: string;
@@ -142,6 +161,9 @@ export interface ChatResponse {
   confidence: number;
   processing_time_ms: number;
   follow_up?: FollowUpQuestion | null;
+  // v0.8.0: Unified citations with inline [N] markers
+  unified_citations?: UnifiedCitation[];
+  web_citations?: Array<{ title: string; url: string; snippet: string }>;
 }
 
 /** Chat query options */

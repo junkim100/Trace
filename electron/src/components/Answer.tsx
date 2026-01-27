@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import type { ChatResponse } from '../types/trace-api';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import type { ChatResponse, UnifiedCitation } from '../types/trace-api';
 
 interface AnswerProps {
   response: ChatResponse | null;
@@ -11,6 +11,188 @@ interface AnswerProps {
   onFollowUpAnswer?: (question: string, answer: string) => void;
   followUpInputValue?: string;
   onFollowUpInputChange?: (value: string) => void;
+}
+
+// Citation popup component for note citations
+interface CitationPopupProps {
+  citation: UnifiedCitation;
+  position: { x: number; y: number };
+  onClose: () => void;
+}
+
+function CitationPopup({ citation, position, onClose }: CitationPopupProps) {
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  // Position popup to stay within viewport
+  useEffect(() => {
+    if (popupRef.current) {
+      const popup = popupRef.current;
+      const rect = popup.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // Adjust if popup goes off right edge
+      if (rect.right > viewportWidth - 16) {
+        popup.style.left = `${viewportWidth - rect.width - 16}px`;
+      }
+
+      // Adjust if popup goes off bottom edge
+      if (rect.bottom > viewportHeight - 16) {
+        popup.style.top = `${viewportHeight - rect.height - 16}px`;
+      }
+    }
+  }, [position]);
+
+  return (
+    <div
+      ref={popupRef}
+      style={{
+        ...styles.citationPopup,
+        left: position.x + 10,
+        top: position.y + 10,
+      }}
+      onMouseLeave={onClose}
+    >
+      <div style={styles.popupHeader}>
+        <span style={styles.popupType}>
+          {citation.note_type === 'daily' ? '📅 Daily' : '⏰ Hourly'} note
+        </span>
+        <span style={styles.popupTimestamp}>{citation.label}</span>
+      </div>
+      <div style={styles.popupContent}>
+        {citation.note_content || 'No preview available'}
+      </div>
+    </div>
+  );
+}
+
+// Inline citation marker component
+interface CitationMarkerProps {
+  citation: UnifiedCitation;
+  onNoteHover: (e: React.MouseEvent, citation: UnifiedCitation) => void;
+  onNoteLeave: () => void;
+  onWebClick: (url: string) => void;
+  onNoteClick: (noteId: string) => void;
+}
+
+function CitationMarker({ citation, onNoteHover, onNoteLeave, onWebClick, onNoteClick }: CitationMarkerProps) {
+  const isWeb = citation.type === 'web';
+
+  const handleClick = () => {
+    if (isWeb && citation.url) {
+      onWebClick(citation.url);
+    } else if (!isWeb && citation.note_id) {
+      onNoteClick(citation.note_id);
+    }
+  };
+
+  return (
+    <button
+      style={{
+        ...styles.inlineCitationMarker,
+        ...(isWeb ? styles.inlineCitationWeb : styles.inlineCitationNote),
+      }}
+      onMouseEnter={(e) => !isWeb && onNoteHover(e, citation)}
+      onMouseLeave={() => !isWeb && onNoteLeave()}
+      onClick={handleClick}
+      title={isWeb ? `Open: ${citation.title}` : `View note: ${citation.label}`}
+    >
+      [{citation.id}]
+    </button>
+  );
+}
+
+// Parse answer text and replace [N] with citation markers
+function renderAnswerWithCitations(
+  answer: string,
+  citations: UnifiedCitation[],
+  onNoteHover: (e: React.MouseEvent, citation: UnifiedCitation) => void,
+  onNoteLeave: () => void,
+  onWebClick: (url: string) => void,
+  onNoteClick: (noteId: string) => void
+): React.ReactNode {
+  // If no unified citations, just return the text
+  if (!citations || citations.length === 0) {
+    return answer;
+  }
+
+  // Split by citation markers [N]
+  const parts = answer.split(/(\[\d+\])/g);
+
+  return parts.map((part, index) => {
+    const match = part.match(/\[(\d+)\]/);
+    if (match) {
+      const citId = match[1];
+      const citation = citations.find(c => c.id === citId);
+      if (citation) {
+        return (
+          <CitationMarker
+            key={`cit-${index}`}
+            citation={citation}
+            onNoteHover={onNoteHover}
+            onNoteLeave={onNoteLeave}
+            onWebClick={onWebClick}
+            onNoteClick={onNoteClick}
+          />
+        );
+      }
+      // Return the marker as-is if no matching citation
+      return <span key={`text-${index}`}>{part}</span>;
+    }
+    return <Fragment key={`text-${index}`}>{part}</Fragment>;
+  });
+}
+
+// Citation reference list at the bottom
+function CitationReferenceList({
+  citations,
+  onWebClick,
+  onNoteClick,
+}: {
+  citations: UnifiedCitation[];
+  onWebClick: (url: string) => void;
+  onNoteClick: (noteId: string) => void;
+}) {
+  if (!citations || citations.length === 0) return null;
+
+  return (
+    <div style={styles.citationReferenceList}>
+      <span style={styles.citationsLabel}>Sources</span>
+      <div style={styles.referenceItems}>
+        {citations.map((cit) => (
+          <div
+            key={cit.id}
+            style={{
+              ...styles.referenceItem,
+              ...(cit.type === 'web' ? styles.referenceItemWeb : styles.referenceItemNote),
+            }}
+          >
+            <span style={styles.referenceId}>[{cit.id}]</span>
+            {cit.type === 'web' ? (
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (cit.url) onWebClick(cit.url);
+                }}
+                style={styles.referenceLink}
+                title={cit.url}
+              >
+                {cit.title || cit.url}
+              </a>
+            ) : (
+              <button
+                onClick={() => cit.note_id && onNoteClick(cit.note_id)}
+                style={styles.referenceNoteButton}
+              >
+                {cit.note_type === 'daily' ? '📅' : '⏰'} {cit.label}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // Example questions for the placeholder
@@ -74,6 +256,27 @@ function categorizeError(error: string): { type: 'network' | 'api' | 'timeout' |
 export function Answer({ response, loading = false, error = null, onCitationClick, onRetry, onSuggestionClick, onFollowUpAnswer, followUpInputValue = '', onFollowUpInputChange }: AnswerProps) {
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [loadingDots, setLoadingDots] = useState('');
+  const [popupCitation, setPopupCitation] = useState<UnifiedCitation | null>(null);
+  const [popupPosition, setPopupPosition] = useState({ x: 0, y: 0 });
+
+  // Handlers for citation interactions
+  const handleNoteHover = useCallback((e: React.MouseEvent, citation: UnifiedCitation) => {
+    setPopupCitation(citation);
+    setPopupPosition({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleNoteLeave = useCallback(() => {
+    setPopupCitation(null);
+  }, []);
+
+  const handleWebClick = useCallback((url: string) => {
+    // Open URL in external browser
+    window.traceAPI?.shell?.openExternal(url);
+  }, []);
+
+  const handleNoteClick = useCallback((noteId: string) => {
+    onCitationClick?.(noteId);
+  }, [onCitationClick]);
 
   // Animate loading message progression
   useEffect(() => {
@@ -192,12 +395,40 @@ export function Answer({ response, loading = false, error = null, onCitationClic
     );
   }
 
+  // Check if we have unified citations (v0.8.0 web search integration)
+  const hasUnifiedCitations = response.unified_citations && response.unified_citations.length > 0;
+
   return (
     <div style={styles.container}>
       <div style={styles.answer}>
-        <p style={styles.answerText}>{response.answer}</p>
+        {hasUnifiedCitations ? (
+          // v0.8.0: Render answer with inline [N] citation markers
+          <div style={styles.answerText}>
+            {renderAnswerWithCitations(
+              response.answer,
+              response.unified_citations!,
+              handleNoteHover,
+              handleNoteLeave,
+              handleWebClick,
+              handleNoteClick
+            )}
+          </div>
+        ) : (
+          // Legacy: Plain text answer
+          <p style={styles.answerText}>{response.answer}</p>
+        )}
 
-        {response.citations.length > 0 && (
+        {/* v0.8.0: Citation reference list (Perplexity-style) */}
+        {hasUnifiedCitations && (
+          <CitationReferenceList
+            citations={response.unified_citations!}
+            onWebClick={handleWebClick}
+            onNoteClick={handleNoteClick}
+          />
+        )}
+
+        {/* Legacy citations (backwards compatibility) */}
+        {!hasUnifiedCitations && response.citations.length > 0 && (
           <div style={styles.citations}>
             <span style={styles.citationsLabel}>Sources:</span>
             <div style={styles.citationsList}>
@@ -232,6 +463,15 @@ export function Answer({ response, loading = false, error = null, onCitationClic
           </div>
         )}
       </div>
+
+      {/* Citation popup for note previews */}
+      {popupCitation && (
+        <CitationPopup
+          citation={popupCitation}
+          position={popupPosition}
+          onClose={handleNoteLeave}
+        />
+      )}
 
       <div style={styles.meta}>
         {response.time_filter && (
@@ -615,6 +855,104 @@ const styles: Record<string, React.CSSProperties> = {
   followUpButtonDisabled: {
     opacity: 0.5,
     cursor: 'not-allowed',
+  },
+  // v0.8.0: Inline citation markers
+  inlineCitationMarker: {
+    display: 'inline',
+    padding: '0 3px',
+    margin: '0 1px',
+    fontSize: '0.8em',
+    fontWeight: 600,
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    verticalAlign: 'super',
+    lineHeight: 1,
+    transition: 'opacity 0.2s',
+  },
+  inlineCitationWeb: {
+    backgroundColor: '#e3f2fd',
+    color: '#1976d2',
+  },
+  inlineCitationNote: {
+    backgroundColor: '#f3e5f5',
+    color: '#7b1fa2',
+  },
+  // Citation popup
+  citationPopup: {
+    position: 'fixed' as const,
+    backgroundColor: 'var(--bg-primary)',
+    border: '1px solid var(--border)',
+    borderRadius: '10px',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+    padding: '12px',
+    zIndex: 1000,
+    maxWidth: '380px',
+    maxHeight: '280px',
+    overflow: 'hidden',
+  },
+  popupHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginBottom: '8px',
+    fontSize: '0.8em',
+    color: 'var(--text-secondary)',
+  },
+  popupType: {
+    fontWeight: 500,
+  },
+  popupTimestamp: {
+    color: 'var(--accent)',
+  },
+  popupContent: {
+    fontSize: '0.85em',
+    lineHeight: 1.5,
+    color: 'var(--text-primary)',
+    overflowY: 'auto' as const,
+    maxHeight: '200px',
+  },
+  // Citation reference list
+  citationReferenceList: {
+    marginTop: '1rem',
+    paddingTop: '1rem',
+    borderTop: '1px solid var(--border)',
+  },
+  referenceItems: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '6px',
+    marginTop: '8px',
+  },
+  referenceItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '0.85em',
+    padding: '4px 0',
+  },
+  referenceItemWeb: {},
+  referenceItemNote: {},
+  referenceId: {
+    fontWeight: 600,
+    color: 'var(--text-secondary)',
+    minWidth: '24px',
+  },
+  referenceLink: {
+    color: '#1976d2',
+    textDecoration: 'none',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+    maxWidth: '300px',
+  },
+  referenceNoteButton: {
+    background: 'none',
+    border: 'none',
+    color: '#7b1fa2',
+    cursor: 'pointer',
+    padding: 0,
+    fontSize: 'inherit',
+    textAlign: 'left' as const,
   },
 };
 

@@ -106,14 +106,26 @@ class QueryClassifier:
             r"\bhow\s+often\b",
         ],
         "web_augmented": [
+            # Explicit latest/current info requests
             r"\blatest\b",
-            r"\bcurrent\b.*\b(?:news|events|developments)\b",
-            r"\brecent\s+news\b",
+            r"\bcurrent\b.*\b(?:news|events|developments|version|release)\b",
+            r"\brecent\s+(?:news|updates|changes)\b",
             r"\bsince\s+then\b",
             r"\bdevelopments\b",
-            r"\bwhat\s+(?:is|are)\s+the\s+(?:latest|current)\b",
+            r"\bwhat\s+(?:is|are)\s+the\s+(?:latest|current|new)\b",
             r"\bwhat\s+happened\b.*\bworld\b",
             r"\bconnect\b.*\bwith\s+current\b",
+            # Timeline/evolution queries
+            r"\bhow\s+(?:has|have|did)\s+.+\s+(?:changed|evolved|progressed)\b",
+            r"\bwhat\s+(?:happened|changed)\s+(?:since|after|with)\b",
+            r"\bhistory\s+of\b",
+            r"\btimeline\s+of\b",
+            # External context queries
+            r"\b(?:official\s+)?(?:documentation|docs)\s+(?:for|about|on)\b",
+            r"\b(?:compare|comparison)\s+(?:with|to|between)\b.*(?:now|currently|today)\b",
+            # More info requests (often benefit from web)
+            r"\bmore\s+(?:info|information|details|context)\s+(?:about|on)\b",
+            r"\bwhat\s+(?:else|more)\s+(?:can|should)\s+(?:i|you)\s+know\b",
         ],
         "multi_entity": [
             r"\bboth\b.*\band\b",
@@ -329,3 +341,52 @@ class QueryClassifier:
             The detected query type
         """
         return self.classify(query).query_type
+
+    def should_augment_with_web(self, query: str, notes_age_days: int | None = None) -> bool:
+        """
+        Check if a query would benefit from web search augmentation.
+
+        This considers:
+        1. Explicit web augmentation patterns in the query
+        2. Age of the notes (older notes may benefit from updated context)
+        3. Types of entities mentioned (tech/software evolves quickly)
+
+        Args:
+            query: The user's query string
+            notes_age_days: Age of the oldest relevant note in days
+
+        Returns:
+            True if web search would likely improve the answer
+        """
+        # Check if query type is explicitly web_augmented
+        classification = self.classify(query)
+        if classification.query_type == "web_augmented":
+            return True
+
+        # Check for web augmentation patterns
+        for pattern in self._complexity_patterns.get("web_augmented", []):
+            if pattern.search(query):
+                return True
+
+        # If notes are old (>30 days), web might have updated info
+        if notes_age_days is not None and notes_age_days > 30:
+            # Additional check: is this about something that changes?
+            evolving_topics = [
+                r"\bsoftware\b",
+                r"\bapp\b",
+                r"\btool\b",
+                r"\bframework\b",
+                r"\blibrary\b",
+                r"\bproject\b",
+                r"\btech\b",
+                r"\bai\b",
+                r"\bpython\b",
+                r"\breact\b",
+                r"\bnode\b",
+                r"\brust\b",
+            ]
+            for topic in evolving_topics:
+                if re.search(topic, query, re.IGNORECASE):
+                    return True
+
+        return False

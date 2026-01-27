@@ -551,6 +551,29 @@ export function Settings() {
               </button>
             </div>
           </div>
+
+          {/* Tavily API Key for Web Search (v0.8.0) */}
+          <div style={styles.field}>
+            <label style={styles.label}>Tavily API Key (Web Search)</label>
+            <p style={styles.description}>
+              Optional. Enables web search to augment chat answers with current information.{' '}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.traceAPI?.shell?.openExternal('https://tavily.com');
+                }}
+                style={{ color: 'var(--accent)' }}
+              >
+                Get a free key at tavily.com
+              </a>
+            </p>
+            <p style={styles.tavilyNote}>
+              Set the TAVILY_API_KEY environment variable to enable web search features.
+              Web search will automatically augment answers when asking about current events,
+              timelines, or follow-up questions on past activities.
+            </p>
+          </div>
         </section>
 
         <section style={styles.section}>
@@ -1485,6 +1508,16 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.85rem',
     color: 'var(--text-secondary)',
     marginBottom: '0.75rem',
+  },
+  tavilyNote: {
+    fontSize: '0.8rem',
+    color: 'var(--text-secondary)',
+    fontStyle: 'italic',
+    backgroundColor: 'rgba(0, 122, 255, 0.08)',
+    padding: '0.75rem',
+    borderRadius: '8px',
+    marginTop: '0.5rem',
+    lineHeight: 1.5,
   },
   status: {
     color: '#34c759',

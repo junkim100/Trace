@@ -6,12 +6,17 @@ and context. Uses the LLM to synthesize coherent responses.
 
 Includes user memory for personalized, engaging responses with follow-up questions.
 
+v0.8.0: Added unified citation model for both note and web sources with
+inline citation support ([1], [2], etc.) and Perplexity-style rendering.
+
 P7-05: Answer synthesis prompt
 """
 
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
+from typing import Any
 
 from openai import OpenAI
 
@@ -21,6 +26,224 @@ from src.retrieval.search import NoteMatch
 from src.retrieval.time import TimeFilter
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Unified Citation Model (v0.8.0)
+# ============================================================================
+
+
+class CitationType(str, Enum):
+    """Type of citation source."""
+
+    NOTE = "note"
+    WEB = "web"
+
+
+@dataclass
+class UnifiedCitation:
+    """
+    Unified citation model for both note and web sources.
+
+    This enables Perplexity-style inline citations [1], [2] that can
+    reference either user activity notes or web search results.
+    """
+
+    id: str  # Citation number (e.g., "1", "2")
+    type: CitationType
+    label: str  # Display label
+
+    # Note-specific fields
+    note_id: str | None = None
+    note_type: str | None = None  # "hourly" or "daily"
+    timestamp: str | None = None
+    note_content: str | None = None  # Snippet for popup preview
+
+    # Web-specific fields
+    url: str | None = None
+    title: str | None = None
+    snippet: str | None = None
+    accessed_at: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary representation."""
+        result: dict[str, Any] = {
+            "id": self.id,
+            "type": self.type.value,
+            "label": self.label,
+        }
+
+        if self.type == CitationType.NOTE:
+            result.update(
+                {
+                    "note_id": self.note_id,
+                    "note_type": self.note_type,
+                    "timestamp": self.timestamp,
+                    "note_content": self.note_content,
+                }
+            )
+        else:  # WEB
+            result.update(
+                {
+                    "url": self.url,
+                    "title": self.title,
+                    "snippet": self.snippet,
+                    "accessed_at": self.accessed_at,
+                }
+            )
+
+        return result
+
+
+class CitationBuilder:
+    """
+    Builds unified citations from notes and web results.
+
+    Tracks citations to avoid duplicates and assigns sequential IDs.
+    """
+
+    def __init__(self) -> None:
+        self._citations: list[UnifiedCitation] = []
+        self._note_map: dict[str, str] = {}  # note_id -> citation_id
+        self._web_map: dict[str, str] = {}  # url -> citation_id
+        self._next_id = 1
+
+    def add_note(self, note: NoteMatch) -> str:
+        """
+        Add a note citation, return citation ID.
+
+        Args:
+            note: NoteMatch object from search results
+
+        Returns:
+            Citation ID (e.g., "1")
+        """
+        if note.note_id in self._note_map:
+            return self._note_map[note.note_id]
+
+        cit_id = str(self._next_id)
+        self._next_id += 1
+
+        # Extract snippet for popup (first 300 chars of summary)
+        content_snippet = ""
+        if note.summary:
+            content_snippet = (
+                note.summary[:300] + "..." if len(note.summary) > 300 else note.summary
+            )
+
+        # Create label based on note type
+        if note.note_type == "hour":
+            label = note.start_ts.strftime("%b %d %H:%M")
+        else:
+            label = note.start_ts.strftime("%b %d, %Y")
+
+        citation = UnifiedCitation(
+            id=cit_id,
+            type=CitationType.NOTE,
+            label=label,
+            note_id=note.note_id,
+            note_type=note.note_type,
+            timestamp=note.start_ts.isoformat(),
+            note_content=content_snippet,
+        )
+
+        self._citations.append(citation)
+        self._note_map[note.note_id] = cit_id
+        return cit_id
+
+    def add_web(self, title: str, url: str, snippet: str) -> str:
+        """
+        Add a web citation, return citation ID.
+
+        Args:
+            title: Page title
+            url: Page URL
+            snippet: Content snippet
+
+        Returns:
+            Citation ID (e.g., "2")
+        """
+        if url in self._web_map:
+            return self._web_map[url]
+
+        cit_id = str(self._next_id)
+        self._next_id += 1
+
+        # Truncate title for label
+        label = title[:40] + "..." if len(title) > 40 else title
+
+        citation = UnifiedCitation(
+            id=cit_id,
+            type=CitationType.WEB,
+            label=label,
+            url=url,
+            title=title,
+            snippet=snippet[:200] if snippet else "",
+            accessed_at=datetime.now().isoformat(),
+        )
+
+        self._citations.append(citation)
+        self._web_map[url] = cit_id
+        return cit_id
+
+    def get_citations(self) -> list[UnifiedCitation]:
+        """Get all citations in order."""
+        return self._citations
+
+    def get_note_id_for_citation(self, citation_id: str) -> str | None:
+        """Get the note_id for a given citation ID."""
+        for citation in self._citations:
+            if citation.id == citation_id and citation.type == CitationType.NOTE:
+                return citation.note_id
+        return None
+
+    def build_context_for_llm(
+        self, notes: list[NoteMatch], web_results: list[dict[str, Any]] | None = None
+    ) -> tuple[str, str]:
+        """
+        Build context strings with citation markers for the LLM.
+
+        Returns:
+            Tuple of (notes_context, web_context) with [N] markers
+        """
+        notes_parts = []
+        for note in notes:
+            cit_id = self.add_note(note)
+            label = f"[{cit_id}]"
+
+            note_text = f"### Source {label}\n"
+            note_text += f"Time: {note.start_ts.strftime('%Y-%m-%d %H:%M')}\n"
+            if note.summary:
+                note_text += f"Summary: {note.summary}\n"
+            if note.categories:
+                note_text += f"Categories: {', '.join(note.categories)}\n"
+
+            notes_parts.append(note_text)
+
+        web_parts = []
+        if web_results:
+            for result in web_results:
+                title = result.get("title", "")
+                url = result.get("url", "")
+                snippet = result.get("snippet", "")
+
+                if url:
+                    cit_id = self.add_web(title, url, snippet)
+                    label = f"[{cit_id}]"
+
+                    web_text = f"### Source {label}\n"
+                    web_text += f"Title: {title}\n"
+                    web_text += f"URL: {url}\n"
+                    if snippet:
+                        web_text += f"Content: {snippet}\n"
+
+                    web_parts.append(web_text)
+
+        notes_context = "\n".join(notes_parts) if notes_parts else "No activity notes found."
+        web_context = "\n".join(web_parts) if web_parts else "No web search results."
+
+        return notes_context, web_context
+
 
 # Model for answer synthesis
 ANSWER_MODEL = "gpt-5.2-2025-12-11"
@@ -87,6 +310,65 @@ Example:
 FOLLOW_UP_INSTRUCTIONS_NONE = (
     """Do NOT include any follow-up questions. Just answer the question directly and concisely."""
 )
+
+# ============================================================================
+# Web-Augmented Answer Prompts (v0.8.0)
+# ============================================================================
+
+# System prompt for web-augmented answers with inline citations
+WEB_AUGMENTED_SYSTEM_PROMPT = """You are a helpful assistant that answers questions about a user's digital activity history, augmented with relevant web search results when appropriate.
+
+You have access to:
+1. User activity notes from their personal Trace app
+2. Web search results that provide additional context
+
+## Citation Rules (CRITICAL)
+
+Use inline citations in brackets: [1], [2], etc. to reference your sources:
+- Use note citations [N] when referencing the user's past activities
+- Use web citations [N] when providing external context, timelines, or current information
+- Citations should flow naturally within sentences
+
+Example: "You worked on the React project last Tuesday [1]. React 19 was released around that time with new features like server components [2], which may explain the documentation you were reading [3]."
+
+## Priority Rules
+
+1. **User's activity data is primary** - The main focus should be on what the user actually did
+2. **Web results augment, not replace** - Use web search to provide context, not to answer instead
+3. **Be honest about sources** - If info comes from web search vs. notes, make it clear through citations
+4. **If information conflicts** - Prefer user's notes for what they did, web for factual context
+
+## Guidelines
+
+- Keep answers concise but informative
+- Use natural language with citations integrated smoothly
+- Filter out any wallpaper/background misattributions from notes
+- Do NOT repeat the same citation multiple times in a row
+- Only cite sources that you actually reference
+
+{follow_up_instructions}
+"""
+
+# User prompt template for web-augmented answers
+WEB_AUGMENTED_USER_PROMPT = """Question: {question}
+
+Time context: {time_context}
+
+## User Memory
+{memory_context}
+
+## User's Activity Notes
+{notes_context}
+
+## Web Search Results
+{web_context}
+
+## Aggregates Data (if applicable)
+{aggregates_context}
+
+---
+
+Answer the question using the information above. Remember to use inline citations [N] naturally in your response."""
 
 # User prompt template with memory context
 USER_PROMPT_TEMPLATE = """Question: {question}
@@ -584,6 +866,113 @@ class AnswerSynthesizer:
                 confidence=0.0,
                 model=self.model,
                 context_used=context,
+            )
+
+    def synthesize_with_web(
+        self,
+        question: str,
+        notes: list[NoteMatch],
+        web_results: list[dict[str, Any]],
+        time_filter: TimeFilter | None = None,
+        aggregates: list[AggregateItem] | None = None,
+        include_memory: bool = True,
+    ) -> tuple[str, list[UnifiedCitation]]:
+        """
+        Synthesize an answer using both notes and web search results.
+
+        This uses the web-augmented prompt with inline citations [1], [2], etc.
+
+        Args:
+            question: User's question
+            notes: Relevant notes from search
+            web_results: Web search results (list of dicts with title, url, snippet)
+            time_filter: Time range filter
+            aggregates: Optional aggregate data
+            include_memory: Whether to include user memory context
+
+        Returns:
+            Tuple of (answer_text, unified_citations)
+        """
+        # Get user memory context if requested
+        memory_context = ""
+        if include_memory:
+            try:
+                from src.memory.memory import get_memory_context
+
+                memory_context = get_memory_context()
+            except Exception as e:
+                logger.debug(f"Could not load memory context: {e}")
+
+        # Build time context description
+        if time_filter:
+            time_context = (
+                f"{time_filter.description} "
+                f"({time_filter.start.strftime('%Y-%m-%d %H:%M')} to "
+                f"{time_filter.end.strftime('%Y-%m-%d %H:%M')})"
+            )
+        else:
+            time_context = "All time (no specific time filter)"
+
+        # Build aggregates context
+        if aggregates:
+            agg_parts = ["Time spent (in minutes):"]
+            for item in aggregates[:10]:
+                agg_parts.append(f"- {item.key} ({item.key_type}): {item.value:.1f} minutes")
+            aggregates_context = "\n".join(agg_parts)
+        else:
+            aggregates_context = "No aggregate data available."
+
+        # Use CitationBuilder to build context with [N] markers
+        citation_builder = CitationBuilder()
+        notes_context, web_context = citation_builder.build_context_for_llm(notes, web_results)
+
+        # Determine follow-up instructions
+        if not memory_context or memory_context == "No user memory available yet.":
+            follow_up_instructions = FOLLOW_UP_INSTRUCTIONS_SPARSE
+        else:
+            follow_up_instructions = FOLLOW_UP_INSTRUCTIONS_NONE
+
+        # Build prompts
+        system_prompt = WEB_AUGMENTED_SYSTEM_PROMPT.format(
+            follow_up_instructions=follow_up_instructions
+        )
+        user_prompt = WEB_AUGMENTED_USER_PROMPT.format(
+            question=question,
+            time_context=time_context,
+            memory_context=memory_context or "No user memory available yet.",
+            notes_context=notes_context,
+            web_context=web_context,
+            aggregates_context=aggregates_context,
+        )
+
+        # Call LLM
+        try:
+            client = self._get_client()
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.4,
+                max_completion_tokens=1500,  # More room for citations
+            )
+
+            raw_answer = response.choices[0].message.content or ""
+
+            # Extract follow-up question if present
+            answer, _ = extract_follow_up_question(raw_answer)
+
+            # Get the unified citations
+            unified_citations = citation_builder.get_citations()
+
+            return answer, unified_citations
+
+        except Exception as e:
+            logger.error(f"Failed to synthesize web-augmented answer: {e}")
+            return (
+                f"I encountered an error while generating the answer: {e}",
+                citation_builder.get_citations(),
             )
 
     def synthesize_without_context(self, question: str) -> SynthesizedAnswer:

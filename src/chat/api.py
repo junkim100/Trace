@@ -24,7 +24,13 @@ from src.chat.clarification import (
     ClarificationResponse,
     get_clarification_manager,
 )
-from src.chat.prompts.answer import AnswerSynthesizer, Citation, FollowUpQuestion
+from src.chat.prompts.answer import (
+    AnswerSynthesizer,
+    Citation,
+    CitationBuilder,
+    FollowUpQuestion,
+    UnifiedCitation,
+)
 from src.core.paths import DB_PATH
 from src.retrieval.aggregates import AggregateItem, AggregatesLookup
 from src.retrieval.graph import GraphExpander, RelatedEntity
@@ -74,6 +80,8 @@ class ChatResponse:
     # Clarification flow
     needs_clarification: bool = False
     clarification: ClarificationRequest | None = None
+    # v0.8.0: Unified citations (note + web combined) with inline [N] markers
+    unified_citations: list[UnifiedCitation] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
@@ -102,6 +110,9 @@ class ChatResponse:
         # Include follow-up question if present
         if self.follow_up:
             result["follow_up"] = self.follow_up.to_dict()
+        # v0.8.0: Include unified citations
+        if self.unified_citations:
+            result["unified_citations"] = [uc.to_dict() for uc in self.unified_citations]
         return result
 
 
@@ -374,7 +385,41 @@ class ChatAPI:
                 continue
 
         # Synthesize final answer
-        if notes:
+        # v0.8.0: Use web-augmented synthesis when we have web results
+        unified_citations: list[UnifiedCitation] = []
+
+        if execution_result.web_results and notes:
+            # Use web-augmented synthesis with inline citations
+            answer, unified_citations = self._synthesizer.synthesize_with_web(
+                question=query,
+                notes=notes,
+                web_results=execution_result.web_results,
+                time_filter=time_filter,
+                aggregates=aggregates,
+            )
+            # Calculate confidence based on note + web coverage
+            confidence = min(1.0, (len(notes) + len(execution_result.web_results)) / 5)
+            # Extract old-style citations for backwards compatibility
+            builder = CitationBuilder()
+            for note in notes:
+                builder.add_note(note)
+            # Convert unified citations to old Citation format for backwards compatibility
+            from datetime import datetime as dt
+
+            old_citations = []
+            for c in unified_citations:
+                if c.type.value == "note":
+                    # Parse timestamp string back to datetime
+                    ts = dt.fromisoformat(c.timestamp) if c.timestamp else dt.now()
+                    old_citations.append(
+                        Citation(
+                            note_id=c.note_id or "",
+                            note_type=c.note_type or "hour",
+                            timestamp=ts,
+                            label=c.label,
+                        )
+                    )
+        elif notes:
             synthesized = self._synthesizer.synthesize(
                 question=query,
                 notes=notes,
@@ -382,8 +427,14 @@ class ChatAPI:
                 aggregates=aggregates,
                 related_entities=related_entities,
             )
+            answer = synthesized.answer
+            old_citations = synthesized.citations
+            confidence = synthesized.confidence
         else:
             synthesized = self._synthesizer.synthesize_without_context(query)
+            answer = synthesized.answer
+            old_citations = synthesized.citations
+            confidence = synthesized.confidence
 
         processing_time = (time.time() - start_time) * 1000
 
@@ -391,18 +442,19 @@ class ChatAPI:
         plan_summary = f"{plan.query_type} query: {plan.reasoning}"
 
         return ChatResponse(
-            answer=synthesized.answer,
-            citations=synthesized.citations,
+            answer=answer,
+            citations=old_citations,
             notes=notes,
             time_filter=time_filter,
             related_entities=related_entities,
             aggregates=aggregates,
             query_type=plan.query_type,
-            confidence=synthesized.confidence,
+            confidence=confidence,
             processing_time_ms=processing_time,
             plan_summary=plan_summary,
             web_citations=execution_result.web_results,
             patterns=execution_result.patterns,
+            unified_citations=unified_citations,
         )
 
     def _detect_query_type(
