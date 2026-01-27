@@ -215,6 +215,8 @@ class CalendarCapture:
         self._cache_start: datetime | None = None
         self._cache_end: datetime | None = None
         self._last_query_time: datetime | None = None
+        self._permission_checked: bool = False
+        self._has_permission: bool = False
 
     def get_events_for_hour(self, hour_start: datetime) -> list[CalendarEvent]:
         """
@@ -246,6 +248,20 @@ class CalendarCapture:
         Returns:
             List of CalendarEvent objects
         """
+        # Check permission on first use
+        if not self._permission_checked:
+            self._permission_checked = True
+            self._has_permission = check_calendar_permission()
+            if not self._has_permission:
+                logger.debug(
+                    "Calendar permission not available. "
+                    "Enable in System Settings → Privacy & Security → Automation → Trace → Calendar"
+                )
+
+        # Skip if no permission
+        if not self._has_permission:
+            return []
+
         now = datetime.now()
 
         # Check if we can use cached data
@@ -337,6 +353,49 @@ def check_calendar_permission() -> bool:
         return False
 
 
+def request_calendar_permission() -> bool:
+    """
+    Attempt to trigger the calendar automation permission dialog.
+
+    For unsigned apps, this may not show a dialog but will add the app
+    to System Settings → Automation where the user can manually enable it.
+
+    Returns:
+        True if permission was granted, False otherwise
+    """
+    if sys.platform != "darwin":
+        return False
+
+    # This simple query should trigger the permission prompt
+    # For unsigned apps, it adds the app to Automation settings
+    try:
+        script = """
+        tell application "Calendar"
+            return name of first calendar
+        end tell
+        """
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode == 0:
+            logger.info("Calendar automation permission granted")
+            return True
+        else:
+            logger.warning(
+                "Calendar permission not granted. "
+                "Please enable in System Settings → Privacy & Security → Automation → Trace → Calendar"
+            )
+            return False
+
+    except Exception as e:
+        logger.error(f"Failed to request calendar permission: {e}")
+        return False
+
+
 if __name__ == "__main__":
     import fire
 
@@ -369,11 +428,16 @@ if __name__ == "__main__":
         events = capturer.get_events_for_hour(hour_start)
         return [e.to_dict() for e in events]
 
+    def request():
+        """Request calendar permission (triggers automation dialog)."""
+        return {"granted": request_calendar_permission()}
+
     fire.Fire(
         {
             "capture": capture,
             "current": current,
             "check": check,
             "hour": hour,
+            "request": request,
         }
     )
