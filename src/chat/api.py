@@ -19,6 +19,11 @@ from src.chat.agentic.classifier import QueryClassifier
 from src.chat.agentic.executor import ExecutionResult, PlanExecutor
 from src.chat.agentic.planner import QueryPlanner
 from src.chat.agentic.schemas import QueryPlan
+from src.chat.clarification import (
+    ClarificationRequest,
+    ClarificationResponse,
+    get_clarification_manager,
+)
 from src.chat.prompts.answer import AnswerSynthesizer, Citation, FollowUpQuestion
 from src.core.paths import DB_PATH
 from src.retrieval.aggregates import AggregateItem, AggregatesLookup
@@ -40,6 +45,11 @@ class ChatRequest:
     include_aggregates: bool = True
     max_results: int = 10
     use_agentic: bool = True  # Enable agentic processing for complex queries
+    # Clarification flow fields
+    clarification_response: ClarificationResponse | None = (
+        None  # User's response to a clarification
+    )
+    skip_clarification: bool = False  # Skip clarification checks (use defaults)
 
 
 @dataclass
@@ -61,6 +71,9 @@ class ChatResponse:
     patterns: list[str] = field(default_factory=list)
     # Follow-up question for engagement
     follow_up: FollowUpQuestion | None = None
+    # Clarification flow
+    needs_clarification: bool = False
+    clarification: ClarificationRequest | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
@@ -74,7 +87,11 @@ class ChatResponse:
             "query_type": self.query_type,
             "confidence": self.confidence,
             "processing_time_ms": self.processing_time_ms,
+            "needs_clarification": self.needs_clarification,
         }
+        # Include clarification if needed
+        if self.clarification:
+            result["clarification"] = self.clarification.to_dict()
         # Include agentic metadata if present
         if self.plan_summary:
             result["plan_summary"] = self.plan_summary
@@ -128,6 +145,9 @@ class ChatAPI:
         self._planner = QueryPlanner(api_key=api_key)
         self._executor = PlanExecutor(db_path=self.db_path, api_key=api_key)
 
+        # Initialize clarification manager
+        self._clarification_manager = get_clarification_manager()
+
     def chat(self, request: ChatRequest) -> ChatResponse:
         """
         Process a chat request and return a response.
@@ -145,34 +165,59 @@ class ChatAPI:
 
         start_time = time.time()
 
+        # Handle clarification response if provided
+        query = request.query
+        if request.clarification_response:
+            query = self._clarification_manager.apply_clarification(request.clarification_response)
+            logger.info(f"Applied clarification: '{request.query}' -> '{query}'")
+
+        # Check for ambiguity (unless skipped or already clarified)
+        if not request.skip_clarification and not request.clarification_response:
+            clarification = self._clarification_manager.check_for_clarification(query)
+            if clarification:
+                logger.info(f"Query needs clarification: {clarification.ambiguity_type}")
+                return ChatResponse(
+                    answer="",
+                    citations=[],
+                    notes=[],
+                    time_filter=None,
+                    related_entities=[],
+                    aggregates=[],
+                    query_type="clarification",
+                    confidence=0.0,
+                    processing_time_ms=(time.time() - start_time) * 1000,
+                    needs_clarification=True,
+                    clarification=clarification,
+                )
+
         # Parse time filter from query
         time_filter = None
         if request.time_filter_hint:
             time_filter = parse_time_filter(request.time_filter_hint)
         if time_filter is None:
-            time_filter = parse_time_filter(request.query)
+            time_filter = parse_time_filter(query)
 
         # Check if query should use agentic pipeline
         if request.use_agentic:
-            classification = self._classifier.classify(request.query)
+            classification = self._classifier.classify(query)
             if classification.is_complex:
                 logger.info(f"Using agentic pipeline for {classification.query_type} query")
                 return self._handle_agentic_query(
-                    request, time_filter, classification.query_type, start_time
+                    request, query, time_filter, classification.query_type, start_time
                 )
 
         # Detect query type for simple routing
-        query_type = self._detect_query_type(request.query)
+        query_type = self._detect_query_type(query)
 
-        # Route based on query type
+        # Route based on query type (use refined query)
         if query_type == "aggregates":
-            response = self._handle_aggregates_query(request, time_filter)
+            response = self._handle_aggregates_query(request, query, time_filter)
         elif query_type == "entity":
-            response = self._handle_entity_query(request, time_filter)
+            response = self._handle_entity_query(request, query, time_filter)
         elif query_type == "timeline":
-            response = self._handle_timeline_query(request, time_filter)
+            response = self._handle_timeline_query(request, query, time_filter)
         else:
-            response = self._handle_semantic_query(request, time_filter)
+            response = self._handle_semantic_query(request, query, time_filter)
 
         # Calculate processing time
         processing_time = (time.time() - start_time) * 1000
@@ -193,6 +238,7 @@ class ChatAPI:
     def _handle_agentic_query(
         self,
         request: ChatRequest,
+        query: str,
         time_filter: TimeFilter | None,
         query_type: str,
         start_time: float,
@@ -202,6 +248,7 @@ class ChatAPI:
 
         Args:
             request: ChatRequest with user query
+            query: The refined query (after clarification if any)
             time_filter: Parsed time filter
             query_type: Detected query type from classifier
             start_time: Query start time for timing
@@ -215,7 +262,7 @@ class ChatAPI:
             # Generate execution plan
             time_context = time_filter.description if time_filter else None
             plan = self._planner.plan_for_type(
-                query=request.query,
+                query=query,
                 query_type=query_type,
                 time_filter_description=time_context,
             )
@@ -228,6 +275,7 @@ class ChatAPI:
             # Convert execution result to ChatResponse
             return self._build_agentic_response(
                 request=request,
+                query=query,
                 plan=plan,
                 execution_result=execution_result,
                 time_filter=time_filter,
@@ -237,7 +285,7 @@ class ChatAPI:
         except Exception as e:
             logger.error(f"Agentic pipeline failed: {e}, falling back to simple search")
             # Fallback to simple semantic search
-            response = self._handle_semantic_query(request, time_filter)
+            response = self._handle_semantic_query(request, query, time_filter)
             processing_time = (time.time() - start_time) * 1000
 
             return ChatResponse(
@@ -256,6 +304,7 @@ class ChatAPI:
     def _build_agentic_response(
         self,
         request: ChatRequest,
+        query: str,
         plan: QueryPlan,
         execution_result: ExecutionResult,
         time_filter: TimeFilter | None,
@@ -266,6 +315,7 @@ class ChatAPI:
 
         Args:
             request: Original request
+            query: The refined query (after clarification if any)
             plan: The executed plan
             execution_result: Results from plan execution
             time_filter: Time filter used
@@ -326,14 +376,14 @@ class ChatAPI:
         # Synthesize final answer
         if notes:
             synthesized = self._synthesizer.synthesize(
-                question=request.query,
+                question=query,
                 notes=notes,
                 time_filter=time_filter,
                 aggregates=aggregates,
                 related_entities=related_entities,
             )
         else:
-            synthesized = self._synthesizer.synthesize_without_context(request.query)
+            synthesized = self._synthesizer.synthesize_without_context(query)
 
         processing_time = (time.time() - start_time) * 1000
 
@@ -389,13 +439,30 @@ class ChatAPI:
         timeline_patterns = [
             "what did i do",
             "what was i doing",
+            "what did i work",
+            "what have i been",
+            "what was i working",
+            "what i did",
+            "what i worked",
+            "show me my",
             "summary of",
             "overview of",
             "activities ",
+            "activity ",
             "timeline ",
         ]
         for pattern in timeline_patterns:
             if pattern in query_lower:
+                return "timeline"
+
+        # If there's a clear time reference in the query, treat it as a timeline query
+        # This ensures queries like "yesterday", "on the 25th", "last week" get routed correctly
+        from src.retrieval.time import parse_time_filter
+
+        if parse_time_filter(query) is not None:
+            # Check if this is likely asking about activities (not just mentioning a date)
+            activity_indicators = ["what", "show", "tell", "give", "list", "get"]
+            if any(word in query_lower for word in activity_indicators):
                 return "timeline"
 
         # Default to semantic search
@@ -404,11 +471,12 @@ class ChatAPI:
     def _handle_aggregates_query(
         self,
         request: ChatRequest,
+        query: str,
         time_filter: TimeFilter | None,
     ) -> dict:
         """Handle queries about aggregates (most/top)."""
         # Detect the key type from the query
-        detected = self._aggregates.detect_most_query(request.query)
+        detected = self._aggregates.detect_most_query(query)
 
         if detected:
             _, key_type = detected
@@ -429,7 +497,7 @@ class ChatAPI:
 
         # Synthesize answer
         synthesized = self._synthesizer.synthesize(
-            question=request.query,
+            question=query,
             notes=notes,
             time_filter=time_filter,
             aggregates=result.items,
@@ -448,20 +516,21 @@ class ChatAPI:
     def _handle_entity_query(
         self,
         request: ChatRequest,
+        query: str,
         time_filter: TimeFilter | None,
     ) -> dict:
         """Handle queries about specific entities."""
         # Extract entity name from query
-        entity_name = self._extract_entity_from_query(request.query)
+        entity_name = self._extract_entity_from_query(query)
 
         if not entity_name:
-            return self._handle_semantic_query(request, time_filter)
+            return self._handle_semantic_query(request, query, time_filter)
 
         # Get entity context
         context = self._expander.get_entity_context(entity_name, time_filter=time_filter)
 
         if "error" in context:
-            return self._handle_semantic_query(request, time_filter)
+            return self._handle_semantic_query(request, query, time_filter)
 
         # Get notes mentioning this entity
         notes = self._searcher.search_by_entity(
@@ -490,7 +559,7 @@ class ChatAPI:
 
         # Synthesize answer
         synthesized = self._synthesizer.synthesize(
-            question=request.query,
+            question=query,
             notes=notes,
             time_filter=time_filter,
             aggregates=agg_result.items,
@@ -510,6 +579,7 @@ class ChatAPI:
     def _handle_timeline_query(
         self,
         request: ChatRequest,
+        query: str,
         time_filter: TimeFilter | None,
     ) -> dict:
         """Handle queries asking about activities in a time period."""
@@ -543,7 +613,7 @@ class ChatAPI:
 
         # Synthesize answer
         synthesized = self._synthesizer.synthesize(
-            question=request.query,
+            question=query,
             notes=notes,
             time_filter=time_filter,
             aggregates=aggregates[:10],
@@ -562,6 +632,7 @@ class ChatAPI:
     def _handle_semantic_query(
         self,
         request: ChatRequest,
+        query: str,
         time_filter: TimeFilter | None,
     ) -> dict:
         """
@@ -576,7 +647,7 @@ class ChatAPI:
         """
         # Perform hierarchical search (daily first, then hourly)
         hierarchical_result = self._hierarchical_searcher.search(
-            query=request.query,
+            query=query,
             time_filter=time_filter,
             max_days=5,  # Top 5 most relevant days
             max_hours_per_day=3,  # Top 3 hours per day
@@ -585,6 +656,15 @@ class ChatAPI:
 
         # Get notes optimized for LLM context (daily summaries first, then hourly)
         notes = hierarchical_result.get_context_for_llm(max_notes=request.max_results)
+
+        # Fallback: if hierarchical search found nothing but we have a time filter,
+        # try direct time-based retrieval (bypasses embedding search)
+        if not notes and time_filter:
+            logger.info("Hierarchical search empty, falling back to time-range retrieval")
+            notes = self._searcher.get_notes_in_range(
+                time_filter,
+                limit=request.max_results,
+            )
 
         related_entities = []
         aggregates: list[AggregateItem] = []
@@ -639,14 +719,14 @@ class ChatAPI:
         # Synthesize answer
         if notes:
             synthesized = self._synthesizer.synthesize(
-                question=request.query,
+                question=query,
                 notes=notes,
                 time_filter=time_filter,
                 aggregates=aggregates,
                 related_entities=related_entities,
             )
         else:
-            synthesized = self._synthesizer.synthesize_without_context(request.query)
+            synthesized = self._synthesizer.synthesize_without_context(query)
 
         return {
             "answer": synthesized.answer,

@@ -96,10 +96,7 @@ class MarkdownRenderer:
             for detail in summary.details:
                 # Category as a tag
                 category_display = detail.category.replace("_", " ").title()
-                confidence_str = (
-                    f" ({int(detail.confidence * 100)}%)" if detail.confidence < 1.0 else ""
-                )
-                lines.append(f"### {category_display}{confidence_str}")
+                lines.append(f"### {category_display}")
                 lines.append("")
                 lines.append(detail.summary)
                 if detail.intent:
@@ -117,11 +114,8 @@ class MarkdownRenderer:
             lines.append("## Topics & Learning")
             lines.append("")
             for topic in summary.topics:
-                confidence_str = (
-                    f" ({int(topic.confidence * 100)}%)" if topic.confidence < 1.0 else ""
-                )
                 context_str = f" - {topic.context}" if topic.context else ""
-                lines.append(f"- **{topic.name}**{confidence_str}{context_str}")
+                lines.append(f"- **{topic.name}**{context_str}")
             lines.append("")
 
         # Documents section

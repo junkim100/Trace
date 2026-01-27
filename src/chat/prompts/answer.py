@@ -29,37 +29,42 @@ ANSWER_MODEL = "gpt-5.2-2025-12-11"
 SYSTEM_PROMPT = """You are a helpful, personalized assistant that answers questions about a user's digital activity history. You have access to notes that summarize their activities, and you know things about the user from their memory profile.
 
 Guidelines:
-1. ALWAYS cite your sources using [Note: HH:00] format for hourly notes or [Note: YYYY-MM-DD] for daily notes
-2. Only make claims that are supported by the provided notes
-3. If the information isn't in the notes, say so honestly
-4. When answering "most" or "top" questions, use the provided aggregates data
-5. Keep answers concise but informative
-6. Use natural language, not bullet points unless listing items
-7. When relevant, mention the time context (e.g., "this morning", "last Tuesday")
-8. If asked about something not in the notes, acknowledge the limitation
-9. Use the user's name when appropriate to personalize the response
-10. Be engaging and conversational, not robotic
+1. Only make claims that are supported by the provided notes
+2. If the information isn't in the notes, say so honestly
+3. When answering "most" or "top" questions, use the provided aggregates data
+4. Keep answers concise but informative
+5. Use natural language, not bullet points unless listing items
+6. When relevant, mention the time context naturally (e.g., "this morning", "around 2pm", "last Tuesday")
+7. If asked about something not in the notes, acknowledge the limitation
+8. Use the user's name when appropriate to personalize the response
+9. Be engaging and conversational, not robotic
+10. Do NOT use bracket notation like [Note: HH:00] - just refer to times naturally in your response
 
-IMPORTANT - Follow-up Questions:
-After answering, suggest ONE thoughtful follow-up question to learn more about the user or continue the conversation. The follow-up should:
+{follow_up_instructions}
+"""
+
+# Follow-up instructions only when memory is sparse
+FOLLOW_UP_INSTRUCTIONS_SPARSE = """IMPORTANT - Follow-up Questions:
+Since we don't know much about the user yet, after answering, suggest ONE thoughtful follow-up question to learn more about them. The follow-up should:
 - Be relevant to what was discussed
 - Help you learn something useful about the user (interests, preferences, work, etc.)
 - Be optional and non-intrusive
 - Be phrased conversationally
 
 Format your response as:
-1. Your answer to the question (with citations)
+1. Your answer to the question
 2. Then on a new line, a follow-up question starting with "💭 "
 
 Example:
-"You spent about 3 hours working on Python code in VS Code today [Note: 14:00]. Most of that time was focused on implementing the new API endpoint you mentioned.
+"You spent about 3 hours working on Python code in VS Code today.
 
 💭 Are you building this for a personal project or is it work-related?"
-
-Example citations:
-- "You spent 3 hours coding in VS Code [Note: 14:00]."
-- "On Monday, you focused primarily on Python development [Note: 2025-01-13]."
 """
+
+# No follow-up when we already know the user well
+FOLLOW_UP_INSTRUCTIONS_NONE = (
+    """Do NOT include any follow-up questions. Just answer the question directly and concisely."""
+)
 
 # User prompt template with memory context
 USER_PROMPT_TEMPLATE = """Question: {question}
@@ -83,8 +88,7 @@ Time context: {time_context}
 
 ---
 
-Please answer the question based on the information above. Remember to cite your sources.
-After your answer, include a thoughtful follow-up question starting with "💭 " to learn more about the user or continue the conversation."""
+Please answer the question based on the information above. Remember to cite your sources."""
 
 
 @dataclass
@@ -228,6 +232,13 @@ class AnswerPromptBuilder:
             context.memory_context if context.memory_context else "No user memory available yet."
         )
 
+        # Determine if we should include follow-up instructions
+        # Only include if memory is sparse (no name, no occupation, few interests)
+        follow_up_instructions = self._determine_follow_up_instructions(context.memory_context)
+
+        # Format system prompt with appropriate follow-up instructions
+        system_prompt = SYSTEM_PROMPT.format(follow_up_instructions=follow_up_instructions)
+
         # Format user prompt
         user_prompt = USER_PROMPT_TEMPLATE.format(
             question=context.question,
@@ -238,7 +249,37 @@ class AnswerPromptBuilder:
             related_context=related_context,
         )
 
-        return SYSTEM_PROMPT, user_prompt
+        return system_prompt, user_prompt
+
+    def _determine_follow_up_instructions(self, memory_context: str) -> str:
+        """
+        Determine whether to include follow-up question instructions.
+
+        Only asks follow-up questions when memory is sparse (missing key info).
+
+        Args:
+            memory_context: The user's memory context string
+
+        Returns:
+            Follow-up instructions string (or empty to skip follow-ups)
+        """
+        if not memory_context or memory_context == "No user memory available yet.":
+            return FOLLOW_UP_INSTRUCTIONS_SPARSE
+
+        # Check for key indicators of a populated memory
+        memory_lower = memory_context.lower()
+
+        # If we have a name and at least some other info, skip follow-ups
+        has_name = "name:" in memory_lower and "not set" not in memory_lower
+        has_role = "role:" in memory_lower or "occupation:" in memory_lower
+        has_interests = "interests:" in memory_lower or "hobbies:" in memory_lower
+
+        # Memory is considered "populated" if we have name + at least one other field
+        if has_name and (has_role or has_interests):
+            return FOLLOW_UP_INSTRUCTIONS_NONE
+
+        # Memory is sparse - include follow-up questions
+        return FOLLOW_UP_INSTRUCTIONS_SPARSE
 
     def _build_time_context(self, time_filter: TimeFilter | None) -> str:
         """Build time context description."""

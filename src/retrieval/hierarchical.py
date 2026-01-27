@@ -246,10 +246,7 @@ class HierarchicalSearcher:
             )
 
             # Filter to only daily notes
-            daily_matches = [
-                note for note in result.matches
-                if note.note_type == 'day'
-            ]
+            daily_matches = [note for note in result.matches if note.note_type == "day"]
 
             return daily_matches[:limit]
 
@@ -290,10 +287,7 @@ class HierarchicalSearcher:
             )
 
             # Filter to only hourly notes
-            hourly_matches = [
-                note for note in result.matches
-                if note.note_type == 'hour'
-            ]
+            hourly_matches = [note for note in result.matches if note.note_type == "hour"]
 
             return hourly_matches[:limit]
 
@@ -324,7 +318,7 @@ class HierarchicalSearcher:
             # Filter to only hourly notes and group by date
             notes_by_date: dict[date, list[NoteMatch]] = {}
             for match in result.matches:
-                if match.note_type != 'hour':
+                if match.note_type != "hour":
                     continue
                 note_date = self._extract_date_from_note(match)
                 if note_date:

@@ -225,7 +225,9 @@ class QueryPlanner:
             else {}
         )
 
-        if query_type == "relationship":
+        if query_type == "entity_temporal":
+            return self._plan_entity_temporal_query(query, plan_id)
+        elif query_type == "relationship":
             return self._plan_relationship_query(query, plan_id, time_params)
         elif query_type == "memory_recall":
             return self._plan_memory_recall_query(query, plan_id, time_params)
@@ -238,6 +240,97 @@ class QueryPlanner:
         else:
             # Default to LLM planning
             return self.plan(query, time_filter_description)
+
+    def _plan_entity_temporal_query(
+        self,
+        query: str,
+        plan_id: str,
+    ) -> QueryPlan:
+        """
+        Create a plan for entity temporal queries.
+
+        Handles queries like:
+        - "When did I last use Discord?"
+        - "When was the last time I talked to John?"
+        - "How long since I worked on Project X?"
+        """
+        # Extract entity name from query (simplified extraction)
+        entity_name = self._extract_entity_from_temporal_query(query)
+
+        return QueryPlan(
+            plan_id=plan_id,
+            query=query,
+            query_type="entity_temporal",
+            reasoning=f"Entity temporal query - finding last occurrence of '{entity_name}'",
+            steps=[
+                PlanStep(
+                    step_id="s1",
+                    action="find_last_entity_occurrence",
+                    params={"entity_name": entity_name},
+                    depends_on=[],
+                    required=True,
+                    timeout_seconds=5.0,
+                    description=f"Find when '{entity_name}' was last used/seen",
+                ),
+            ],
+            estimated_time_seconds=5.0,
+            requires_web_search=False,
+        )
+
+    def _extract_entity_from_temporal_query(self, query: str) -> str:
+        """
+        Extract the entity name from a temporal query.
+
+        Args:
+            query: Query like "When did I last use Discord?"
+
+        Returns:
+            Extracted entity name
+        """
+        import re
+
+        # Common patterns for entity extraction
+        patterns = [
+            r"when\s+(?:did|was)\s+(?:i|the)\s+(?:last|most\s+recently)\s+(?:use|open|visit|see|talk\s+to|speak\s+(?:to|with)|meet)\s+(.+?)[\?$]?$",
+            r"last\s+time\s+i\s+(?:used|opened|visited|saw|talked\s+to|spoke\s+(?:to|with)|met|worked\s+(?:on|with))\s+(.+?)[\?$]?$",
+            r"how\s+long\s+(?:since|ago)\s+(?:i|we)\s+(?:used|saw|visited|talked\s+to|worked\s+(?:on|with))\s+(.+?)[\?$]?$",
+            r"when\s+was\s+the\s+last\s+time\s+(?:i\s+)?(?:used|opened|saw|talked\s+to|worked\s+(?:on|with))\s+(.+?)[\?$]?$",
+        ]
+
+        query_lower = query.lower().strip()
+
+        for pattern in patterns:
+            match = re.search(pattern, query_lower, re.IGNORECASE)
+            if match:
+                entity = match.group(1).strip()
+                # Clean up trailing punctuation and common words
+                entity = re.sub(r"[\?\.!]$", "", entity)
+                entity = re.sub(r"\s+(today|yesterday|this\s+week|last\s+week)$", "", entity)
+                return entity.strip()
+
+        # Fallback: extract words after common trigger words
+        triggers = [
+            "use ",
+            "open ",
+            "visit ",
+            "see ",
+            "talk to ",
+            "speak to ",
+            "meet ",
+            "work on ",
+            "work with ",
+        ]
+        for trigger in triggers:
+            if trigger in query_lower:
+                idx = query_lower.index(trigger) + len(trigger)
+                remainder = query[idx:].strip()
+                # Take until punctuation or end
+                entity = re.split(r"[\?\.\!]", remainder)[0].strip()
+                return entity if entity else "unknown"
+
+        # Last resort: return last word before question mark
+        words = re.sub(r"[\?\.\!]$", "", query).split()
+        return words[-1] if words else "unknown"
 
     def _plan_relationship_query(
         self,

@@ -31,6 +31,7 @@ def _register_handlers() -> None:
     from src.trace_app.ipc import (  # noqa: F401
         blocklist_handlers,
         chat_handlers,
+        conversation_handlers,
         dashboard_handlers,
         digest_handlers,
         export_handlers,

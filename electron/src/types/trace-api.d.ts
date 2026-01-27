@@ -1038,6 +1038,115 @@ export interface OnboardingAPI {
   getSummary(): Promise<OnboardingSummaryResponse>;
 }
 
+/** Conversation session */
+export interface Conversation {
+  conversation_id: string;
+  title: string;
+  created_ts: string;
+  updated_ts: string;
+  pinned: boolean;
+  archived: boolean;
+  title_generated_at?: string | null;
+  message_count?: number;
+  last_message_preview?: string;
+}
+
+/** Message metadata for assistant responses */
+export interface MessageMetadata {
+  citations: Citation[];
+  notes: NoteMatch[];
+  aggregates: AggregateItem[];
+  confidence: number;
+  query_type: string;
+  processing_time_ms: number;
+}
+
+/** Message within a conversation */
+export interface ConversationMessage {
+  message_id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_ts: string;
+  metadata?: MessageMetadata | null;
+  token_count?: number | null;
+}
+
+/** Conversation list options */
+export interface ConversationListOptions {
+  limit?: number;
+  offset?: number;
+  includeArchived?: boolean;
+  searchQuery?: string;
+}
+
+/** Conversation list response */
+export interface ConversationListResponse {
+  conversations: Conversation[];
+  total_count: number;
+}
+
+/** Conversation get options */
+export interface ConversationGetOptions {
+  messageLimit?: number;
+  messageOffset?: number;
+}
+
+/** Conversation get response */
+export interface ConversationGetResponse {
+  conversation: Conversation;
+  messages: ConversationMessage[];
+  has_more: boolean;
+}
+
+/** Conversation send options */
+export interface ConversationSendOptions {
+  timeFilter?: string;
+  includeGraphExpansion?: boolean;
+  includeAggregates?: boolean;
+  maxResults?: number;
+}
+
+/** Conversation send response */
+export interface ConversationSendResponse {
+  user_message: ConversationMessage;
+  assistant_message: ConversationMessage;
+  response: ChatResponse;
+  title_updated: boolean;
+  new_title?: string | null;
+}
+
+/** Conversations API methods */
+export interface ConversationsAPI {
+  /** List conversations with pagination */
+  list(options?: ConversationListOptions): Promise<ConversationListResponse>;
+
+  /** Create a new conversation */
+  create(title?: string): Promise<{ conversation: Conversation }>;
+
+  /** Get a conversation with its messages */
+  get(conversationId: string, options?: ConversationGetOptions): Promise<ConversationGetResponse>;
+
+  /** Update conversation metadata (title, pinned, archived) */
+  update(
+    conversationId: string,
+    updates: { title?: string; pinned?: boolean; archived?: boolean }
+  ): Promise<{ success: boolean; conversation: Conversation }>;
+
+  /** Delete a conversation and all its messages */
+  delete(conversationId: string): Promise<{ success: boolean }>;
+
+  /** Send a message and get AI response */
+  send(
+    conversationId: string,
+    query: string,
+    options?: ConversationSendOptions
+  ): Promise<ConversationSendResponse>;
+
+  /** Generate or regenerate title for a conversation */
+  generateTitle(conversationId: string, force?: boolean): Promise<{ title: string; generated: boolean }>;
+}
+
 export interface TraceAPI {
   /** Ping the Electron main process */
   ping(): Promise<string>;
@@ -1110,6 +1219,9 @@ export interface TraceAPI {
 
   /** Onboarding chat API */
   onboarding: OnboardingAPI;
+
+  /** Conversations API */
+  conversations: ConversationsAPI;
 }
 
 declare global {

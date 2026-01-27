@@ -337,6 +337,123 @@ class BackfillDetector:
         )
 
 
+def cleanup_empty_notes(db_path: Path | str | None = None, dry_run: bool = True) -> dict:
+    """
+    Clean up empty notes that have "No summary available" or similar placeholder content.
+
+    These notes were created before the empty note skip check was added.
+
+    Args:
+        db_path: Path to SQLite database
+        dry_run: If True, only report what would be deleted without actually deleting
+
+    Returns:
+        Dictionary with cleanup statistics
+    """
+    import json
+
+    db_path = Path(db_path) if db_path else DB_PATH
+
+    # Indicators of empty/placeholder notes
+    empty_indicators = [
+        "no summary available",
+        "no activity detected",
+        "no meaningful activity",
+    ]
+
+    conn = get_connection(db_path)
+    empty_notes = []
+
+    try:
+        cursor = conn.cursor()
+
+        # Find all notes
+        cursor.execute(
+            """
+            SELECT note_id, note_type, start_ts, file_path, json_payload
+            FROM notes
+            ORDER BY start_ts DESC
+            """
+        )
+
+        for row in cursor.fetchall():
+            note_id = row["note_id"]
+            file_path = row["file_path"]
+            json_payload = row["json_payload"]
+
+            is_empty = False
+
+            # Check JSON payload for empty summary
+            if json_payload:
+                try:
+                    payload = json.loads(json_payload)
+                    summary = payload.get("summary", "").lower().strip()
+                    categories = payload.get("categories", [])
+                    entities = payload.get("entities", [])
+                    activities = payload.get("activities", [])
+
+                    # Note is empty if:
+                    # 1. Summary contains empty indicator AND
+                    # 2. Has no categories, entities, or activities
+                    if any(indicator in summary for indicator in empty_indicators):
+                        if not categories and not entities and not activities:
+                            is_empty = True
+                except json.JSONDecodeError:
+                    pass
+
+            # Also check file content if it exists
+            if file_path and Path(file_path).exists():
+                try:
+                    content = Path(file_path).read_text(encoding="utf-8").lower()
+                    if any(indicator in content for indicator in empty_indicators):
+                        # Additional check: no meaningful content after summary section
+                        if "## activities" not in content or "- **" not in content:
+                            is_empty = True
+                except Exception:
+                    pass
+
+            if is_empty:
+                empty_notes.append(
+                    {
+                        "note_id": note_id,
+                        "start_ts": row["start_ts"],
+                        "file_path": file_path,
+                        "note_type": row["note_type"],
+                    }
+                )
+
+        if not dry_run and empty_notes:
+            # Delete empty notes
+            for note in empty_notes:
+                # Delete from database
+                cursor.execute("DELETE FROM notes WHERE note_id = ?", (note["note_id"],))
+                cursor.execute("DELETE FROM note_entities WHERE note_id = ?", (note["note_id"],))
+                cursor.execute(
+                    "DELETE FROM embeddings WHERE source_type = 'note' AND source_id = ?",
+                    (note["note_id"],),
+                )
+
+                # Delete file if it exists
+                if note["file_path"] and Path(note["file_path"]).exists():
+                    try:
+                        Path(note["file_path"]).unlink()
+                        logger.info(f"Deleted empty note file: {note['file_path']}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete file {note['file_path']}: {e}")
+
+            conn.commit()
+            logger.info(f"Cleaned up {len(empty_notes)} empty notes")
+
+    finally:
+        conn.close()
+
+    return {
+        "dry_run": dry_run,
+        "empty_notes_found": len(empty_notes),
+        "notes": [{"start_ts": n["start_ts"], "file_path": n["file_path"]} for n in empty_notes],
+    }
+
+
 if __name__ == "__main__":
     import fire
 
@@ -369,4 +486,14 @@ if __name__ == "__main__":
             "hours_failed": result.hours_failed,
         }
 
-    fire.Fire({"check": check, "backfill": backfill})
+    def cleanup(db_path: str | None = None, dry_run: bool = True):
+        """
+        Clean up empty notes from the database.
+
+        Args:
+            db_path: Path to database
+            dry_run: If True, only report what would be deleted
+        """
+        return cleanup_empty_notes(db_path=db_path, dry_run=dry_run)
+
+    fire.Fire({"check": check, "backfill": backfill, "cleanup": cleanup})

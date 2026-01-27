@@ -6,6 +6,7 @@ notes and search results.
 
 Supported formats:
 - Relative: "today", "yesterday", "this week", "last month", "last 7 days"
+- Weekdays: "last Saturday", "this Monday", "next Friday"
 - Named periods: "January", "January 2025", "Q1 2025", "2025"
 - Date ranges: "Jan 1 to Jan 15", "from 2025-01-01 to 2025-01-15"
 - Specific dates: "January 15, 2025", "2025-01-15", "Jan 15"
@@ -15,7 +16,7 @@ P7-01: Time filter parser
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Literal
 
@@ -49,6 +50,27 @@ class TimeFilter:
         }
 
 
+@dataclass
+class TimeParseResult:
+    """Result of parsing a time expression with ambiguity detection."""
+
+    time_filter: TimeFilter | None
+    confidence: float  # 0.0-1.0
+    ambiguous: bool = False
+    clarification_options: list[str] = field(default_factory=list)
+    raw_expression: str = ""
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary representation."""
+        return {
+            "time_filter": self.time_filter.to_dict() if self.time_filter else None,
+            "confidence": self.confidence,
+            "ambiguous": self.ambiguous,
+            "clarification_options": self.clarification_options,
+            "raw_expression": self.raw_expression,
+        }
+
+
 # Regex patterns for time parsing
 PATTERNS = {
     # Relative patterns
@@ -60,6 +82,20 @@ PATTERNS = {
     "last_month": re.compile(r"\b(last\s+month)\b", re.IGNORECASE),
     "this_year": re.compile(r"\b(this\s+year)\b", re.IGNORECASE),
     "last_year": re.compile(r"\b(last\s+year)\b", re.IGNORECASE),
+    # Weekday patterns
+    "last_weekday": re.compile(
+        r"\blast\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        re.IGNORECASE,
+    ),
+    "this_weekday": re.compile(
+        r"\bthis\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        re.IGNORECASE,
+    ),
+    # "Last [month name]" without year - potentially ambiguous
+    "last_month_name": re.compile(
+        r"\blast\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b",
+        re.IGNORECASE,
+    ),
     # Last N days/weeks/months
     "last_n_days": re.compile(r"\b(?:(?:the\s+)?last|past)\s+(\d+)\s+days?\b", re.IGNORECASE),
     "last_n_weeks": re.compile(r"\b(?:(?:the\s+)?last|past)\s+(\d+)\s+weeks?\b", re.IGNORECASE),
@@ -106,6 +142,8 @@ PATTERNS = {
     # Before/after
     "before": re.compile(r"\bbefore\s+(.+?)(?:\s|$)", re.IGNORECASE),
     "after": re.compile(r"\bafter\s+(.+?)(?:\s|$)", re.IGNORECASE),
+    # Ordinal day only (e.g., "the 25th", "on the 25th")
+    "ordinal_day": re.compile(r"\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b", re.IGNORECASE),
 }
 
 # Month name to number mapping
@@ -134,6 +172,21 @@ MONTH_MAP = {
     "december": 12,
     "dec": 12,
 }
+
+# Weekday name to Python weekday number (Monday=0, Sunday=6)
+WEEKDAY_MAP = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+# Reverse mapping for display
+WEEKDAY_NAMES = {v: k.title() for k, v in WEEKDAY_MAP.items()}
+MONTH_NAMES = {v: k.title() for k, v in MONTH_MAP.items() if len(k) > 3}
 
 
 def _start_of_day(dt: datetime) -> datetime:
@@ -205,6 +258,140 @@ def _get_quarter_range(quarter: int, year: int) -> tuple[datetime, datetime]:
     end = _end_of_day(datetime(year, end_month, end_day))
 
     return start, end
+
+
+def _resolve_last_weekday(weekday_name: str, reference: datetime) -> tuple[datetime, datetime]:
+    """
+    Find the most recent occurrence of a weekday before today.
+
+    "last Monday" on a Monday means the Monday 7 days ago.
+    "last Monday" on a Tuesday means yesterday (if Monday).
+
+    Args:
+        weekday_name: Name of the weekday (e.g., "monday", "saturday")
+        reference: Reference datetime
+
+    Returns:
+        Tuple of (start_of_day, end_of_day) for the target date
+    """
+    target_weekday = WEEKDAY_MAP[weekday_name.lower()]
+    current_weekday = reference.weekday()
+
+    # Calculate days back to the target weekday
+    days_back = (current_weekday - target_weekday) % 7
+    if days_back == 0:
+        days_back = 7  # "last Monday" on a Monday means 7 days ago
+
+    target_date = reference - timedelta(days=days_back)
+    return (_start_of_day(target_date), _end_of_day(target_date))
+
+
+def _resolve_this_weekday(weekday_name: str, reference: datetime) -> tuple[datetime, datetime]:
+    """
+    Find the occurrence of a weekday in the current week.
+
+    "this Monday" returns this week's Monday (past or future).
+
+    Args:
+        weekday_name: Name of the weekday
+        reference: Reference datetime
+
+    Returns:
+        Tuple of (start_of_day, end_of_day) for the target date
+    """
+    target_weekday = WEEKDAY_MAP[weekday_name.lower()]
+    current_weekday = reference.weekday()
+
+    # Calculate days difference (can be negative for past days in week)
+    days_diff = target_weekday - current_weekday
+    target_date = reference + timedelta(days=days_diff)
+
+    return (_start_of_day(target_date), _end_of_day(target_date))
+
+
+def _resolve_month_reference(
+    month_name: str, reference: datetime, is_last: bool = False
+) -> TimeParseResult:
+    """
+    Resolve a month-only reference with ambiguity detection.
+
+    "last July" in January 2026 is ambiguous - could mean:
+    - July 2025 (more recent)
+    - July 2024 (year before that)
+
+    "July" without "last" in January 2026 defaults to the most recent July.
+
+    Args:
+        month_name: Name of the month
+        reference: Reference datetime
+        is_last: Whether "last" prefix was used
+
+    Returns:
+        TimeParseResult with ambiguity information if applicable
+    """
+    target_month = MONTH_MAP.get(month_name.lower(), MONTH_MAP.get(month_name[:3].lower()))
+    if not target_month:
+        return TimeParseResult(time_filter=None, confidence=0.0, raw_expression=month_name)
+
+    current_month = reference.month
+    current_year = reference.year
+
+    # Determine the most likely year for this month
+    if target_month < current_month:
+        # Month is earlier in the year - most recent occurrence is this year
+        primary_year = current_year
+        alternate_year = current_year - 1
+    elif target_month > current_month:
+        # Month is later in the year - most recent complete occurrence is last year
+        primary_year = current_year - 1
+        alternate_year = current_year - 2
+    else:
+        # Same month - if "last" used, go to previous year; otherwise current
+        if is_last:
+            primary_year = current_year - 1
+            alternate_year = current_year - 2
+        else:
+            primary_year = current_year
+            alternate_year = current_year - 1
+
+    # Build the primary time filter
+    start = _start_of_day(datetime(primary_year, target_month, 1))
+    end = _end_of_month(start)
+    primary_filter = TimeFilter(
+        start=start,
+        end=end,
+        description=f"{MONTH_NAMES.get(target_month, month_name.title())} {primary_year}",
+    )
+
+    # Determine if this is ambiguous
+    # "last July" is ambiguous if we're in the first half of the year
+    # and the month is before the current month
+    is_ambiguous = is_last and (
+        # Early in the year, "last July" could mean last year or year before
+        (current_month <= 6 and target_month > 6)
+        or
+        # Or if we're close to the target month
+        (abs(current_month - target_month) <= 2 and current_month != target_month)
+    )
+
+    if is_ambiguous:
+        return TimeParseResult(
+            time_filter=primary_filter,
+            confidence=0.6,
+            ambiguous=True,
+            clarification_options=[
+                f"{MONTH_NAMES.get(target_month, month_name.title())} {primary_year}",
+                f"{MONTH_NAMES.get(target_month, month_name.title())} {alternate_year}",
+            ],
+            raw_expression=f"last {month_name}" if is_last else month_name,
+        )
+
+    return TimeParseResult(
+        time_filter=primary_filter,
+        confidence=0.9,
+        ambiguous=False,
+        raw_expression=f"last {month_name}" if is_last else month_name,
+    )
 
 
 def _parse_single_date(text: str, reference: datetime) -> datetime | None:
@@ -372,6 +559,28 @@ def parse_time_filter(
             description="last year",
         )
 
+    # Check for "last [weekday]" (e.g., "last Saturday")
+    match = PATTERNS["last_weekday"].search(query_lower)
+    if match:
+        weekday_name = match.group(1).lower()
+        start, end = _resolve_last_weekday(weekday_name, reference)
+        return TimeFilter(
+            start=start,
+            end=end,
+            description=f"last {weekday_name.title()}",
+        )
+
+    # Check for "this [weekday]" (e.g., "this Monday")
+    match = PATTERNS["this_weekday"].search(query_lower)
+    if match:
+        weekday_name = match.group(1).lower()
+        start, end = _resolve_this_weekday(weekday_name, reference)
+        return TimeFilter(
+            start=start,
+            end=end,
+            description=f"this {weekday_name.title()}",
+        )
+
     # Check for "last N days"
     match = PATTERNS["last_n_days"].search(query_lower)
     if match:
@@ -525,6 +734,34 @@ def parse_time_filter(
                 description=f"on {on_text}",
             )
 
+    # Check for ordinal day only (e.g., "the 25th", "on the 25th")
+    match = PATTERNS["ordinal_day"].search(query_lower)
+    if match:
+        day = int(match.group(1))
+        if 1 <= day <= 31:
+            # Default to current month/year
+            try:
+                target_date = reference.replace(day=day)
+                # If the day is in the future within this month, use previous month
+                if target_date > reference:
+                    # Try previous month
+                    if reference.month == 1:
+                        target_date = reference.replace(year=reference.year - 1, month=12, day=day)
+                    else:
+                        try:
+                            target_date = reference.replace(month=reference.month - 1, day=day)
+                        except ValueError:
+                            # Day doesn't exist in previous month, keep current month
+                            pass
+                return TimeFilter(
+                    start=_start_of_day(target_date),
+                    end=_end_of_day(target_date),
+                    description=f"the {day}{'st' if day == 1 else 'nd' if day == 2 else 'rd' if day == 3 else 'th'}",
+                    confidence=0.9,  # Slightly lower confidence since we're inferring the month
+                )
+            except ValueError:
+                pass  # Invalid day for the month
+
     # Check for "during X"
     match = PATTERNS["during"].search(query_lower)
     if match:
@@ -608,6 +845,55 @@ def parse_time_filter(
     return None
 
 
+def parse_time_filter_with_ambiguity(
+    query: str,
+    reference: datetime | None = None,
+) -> TimeParseResult | None:
+    """
+    Parse a time reference with ambiguity detection.
+
+    This function checks for potentially ambiguous time expressions like
+    "last July" (which year?) and returns clarification options.
+
+    Args:
+        query: Query string potentially containing time references
+        reference: Reference datetime (default: now)
+
+    Returns:
+        TimeParseResult with ambiguity information, or None if no time reference found
+
+    Examples:
+        >>> result = parse_time_filter_with_ambiguity("last July")  # in January 2026
+        >>> result.ambiguous
+        True
+        >>> result.clarification_options
+        ['July 2025', 'July 2024']
+    """
+    if reference is None:
+        reference = datetime.now()
+
+    query_lower = query.lower()
+
+    # Check for "last [month name]" - potentially ambiguous
+    match = PATTERNS["last_month_name"].search(query_lower)
+    if match:
+        month_name = match.group(1)
+        return _resolve_month_reference(month_name, reference, is_last=True)
+
+    # For all other cases, use the regular parser and wrap in TimeParseResult
+    time_filter = parse_time_filter(query, reference, "all")
+
+    if time_filter is None:
+        return None
+
+    return TimeParseResult(
+        time_filter=time_filter,
+        confidence=time_filter.confidence,
+        ambiguous=False,
+        raw_expression=time_filter.description,
+    )
+
+
 def extract_time_references(query: str) -> list[str]:
     """
     Extract potential time references from a query.
@@ -671,6 +957,10 @@ if __name__ == "__main__":
             "during this week",
             "between Jan 1 and Jan 31",
             "2024",
+            # New weekday patterns
+            "last Saturday",
+            "this Monday",
+            "what did I do last Friday",
         ]
 
         results = []
@@ -685,4 +975,29 @@ if __name__ == "__main__":
 
         return results
 
-    fire.Fire({"parse": parse, "extract": extract, "demo": demo})
+    def demo_ambiguity():
+        """Run demo showing ambiguity detection."""
+        # Simulate being in January 2026
+        reference = datetime(2026, 1, 27)
+
+        examples = [
+            "last July",
+            "last December",
+            "last March",
+            "July 2025",  # Not ambiguous - year specified
+        ]
+
+        results = []
+        for example in examples:
+            result = parse_time_filter_with_ambiguity(example, reference)
+            results.append(
+                {
+                    "query": example,
+                    "reference": reference.isoformat(),
+                    "result": result.to_dict() if result else None,
+                }
+            )
+
+        return results
+
+    fire.Fire({"parse": parse, "extract": extract, "demo": demo, "demo_ambiguity": demo_ambiguity})

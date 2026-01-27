@@ -7,6 +7,7 @@ interface TimeFilterProps {
   customStart?: string;
   customEnd?: string;
   onChange: (preset: TimePreset, customStart?: string, customEnd?: string) => void;
+  compact?: boolean;
 }
 
 const PRESETS: { value: TimePreset; label: string }[] = [
@@ -19,7 +20,7 @@ const PRESETS: { value: TimePreset; label: string }[] = [
   { value: 'custom', label: 'Custom' },
 ];
 
-export function TimeFilter({ value, customStart, customEnd, onChange }: TimeFilterProps) {
+export function TimeFilter({ value, customStart, customEnd, onChange, compact = false }: TimeFilterProps) {
   const [showCustom, setShowCustom] = useState(value === 'custom');
   const [localStart, setLocalStart] = useState(customStart || '');
   const [localEnd, setLocalEnd] = useState(customEnd || '');
@@ -38,6 +39,29 @@ export function TimeFilter({ value, customStart, customEnd, onChange }: TimeFilt
       onChange('custom', localStart, localEnd);
     }
   };
+
+  // Compact mode renders as a dropdown-style select
+  if (compact) {
+    return (
+      <div style={styles.compactContainer}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={styles.compactIcon}>
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v6l4 2" />
+        </svg>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value as TimePreset)}
+          style={styles.compactSelect}
+        >
+          {PRESETS.filter(p => p.value !== 'custom').map((preset) => (
+            <option key={preset.value} value={preset.value}>
+              {preset.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -123,6 +147,28 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'var(--bg-secondary)',
     borderRadius: '8px',
     border: '1px solid var(--border)',
+  },
+  compactContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.375rem',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '6px',
+    padding: '0.375rem 0.5rem',
+  },
+  compactIcon: {
+    color: 'var(--text-secondary)',
+    flexShrink: 0,
+  },
+  compactSelect: {
+    backgroundColor: 'transparent',
+    border: 'none',
+    color: 'var(--text-primary)',
+    fontSize: '0.8rem',
+    cursor: 'pointer',
+    outline: 'none',
+    paddingRight: '0.25rem',
   },
   presets: {
     display: 'flex',

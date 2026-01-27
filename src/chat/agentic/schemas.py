@@ -46,10 +46,12 @@ ActionType = Literal[
     "filter_by_edge_type",
     "temporal_sequence",
     "web_search",
+    "find_last_entity_occurrence",  # For "When did I last use X?" queries
 ]
 
 # Valid query types that can trigger agentic processing
 QueryType = Literal[
+    "entity_temporal",  # "When did I last use X?" queries
     "relationship",
     "memory_recall",
     "comparison",

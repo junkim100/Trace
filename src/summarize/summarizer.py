@@ -198,7 +198,37 @@ class HourlySummarizer:
                 screenshots_count=evidence.total_screenshots,
             )
 
-        # Step 3b: Check if LLM detected idle/AFK - skip note creation if so
+        # Step 3b: Check if summary is empty/placeholder - skip note creation
+        empty_summary_indicators = [
+            "no summary available",
+            "no activity detected",
+            "no meaningful activity",
+        ]
+        summary_lower = summary.summary.lower().strip()
+        is_empty_summary = not summary.summary.strip() or any(
+            indicator in summary_lower for indicator in empty_summary_indicators
+        )
+        if is_empty_summary:
+            logger.info(
+                f"Empty/placeholder summary for {hour_start.isoformat()}, skipping note creation"
+            )
+            # Clean up screenshot folder
+            cleanup_success = delete_hourly_screenshot_dir(hour_start)
+            if cleanup_success:
+                logger.info(f"Deleted screenshot folder for empty hour {hour_start.isoformat()}")
+            return SummarizationResult(
+                success=True,
+                note_id=None,
+                file_path=None,
+                error=None,
+                events_count=evidence.total_events,
+                screenshots_count=evidence.total_screenshots,
+                keyframes_count=len(keyframes),
+                skipped_idle=True,
+                idle_reason="Empty or placeholder summary",
+            )
+
+        # Step 3d: Check if LLM detected idle/AFK - skip note creation if so
         # ONLY skip if LLM explicitly sets is_idle=true to avoid losing real activity
         if summary.is_idle:
             idle_reason = summary.idle_reason or "User detected as idle/AFK"
@@ -222,7 +252,7 @@ class HourlySummarizer:
                 idle_reason=idle_reason,
             )
 
-        # Step 4: Web enrichment for sports matches and contextual info
+        # Step 4: Web enrichment for sports matches and contextual info (if not skipped)
         logger.debug("Enriching summary with web data...")
         enrichment_result = self.enricher.enrich_summary(summary, hour_start)
         if enrichment_result.enriched_count > 0:

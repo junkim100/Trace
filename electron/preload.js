@@ -547,4 +547,59 @@ contextBridge.exposeInMainWorld('traceAPI', {
     // Get memory summary (for update mode)
     getSummary: () => ipcRenderer.invoke('python:call', 'memory.get_summary', {}),
   },
+
+  // Conversation management methods
+  conversations: {
+    // List conversations with pagination
+    list: (options = {}) =>
+      ipcRenderer.invoke('python:call', 'conversations.list', {
+        limit: options.limit ?? 50,
+        offset: options.offset ?? 0,
+        include_archived: options.includeArchived ?? false,
+        search_query: options.searchQuery,
+      }),
+
+    // Create a new conversation
+    create: (title) =>
+      ipcRenderer.invoke('python:call', 'conversations.create', { title }),
+
+    // Get a conversation with its messages
+    get: (conversationId, options = {}) =>
+      ipcRenderer.invoke('python:call', 'conversations.get', {
+        conversation_id: conversationId,
+        message_limit: options.messageLimit ?? 50,
+        message_offset: options.messageOffset ?? 0,
+      }),
+
+    // Update conversation metadata (title, pinned, archived)
+    update: (conversationId, updates) =>
+      ipcRenderer.invoke('python:call', 'conversations.update', {
+        conversation_id: conversationId,
+        ...updates,
+      }),
+
+    // Delete a conversation and all its messages
+    delete: (conversationId) =>
+      ipcRenderer.invoke('python:call', 'conversations.delete', {
+        conversation_id: conversationId,
+      }),
+
+    // Send a message and get AI response
+    send: (conversationId, query, options = {}) =>
+      ipcRenderer.invoke('python:call', 'conversations.send', {
+        conversation_id: conversationId,
+        query,
+        time_filter: options.timeFilter,
+        include_graph_expansion: options.includeGraphExpansion ?? true,
+        include_aggregates: options.includeAggregates ?? true,
+        max_results: options.maxResults ?? 10,
+      }),
+
+    // Generate or regenerate title for a conversation
+    generateTitle: (conversationId, force = false) =>
+      ipcRenderer.invoke('python:call', 'conversations.generate_title', {
+        conversation_id: conversationId,
+        force,
+      }),
+  },
 });

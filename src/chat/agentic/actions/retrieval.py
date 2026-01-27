@@ -414,6 +414,125 @@ class TimeRangeNotes(Action):
 
 
 @ActionRegistry.register
+class FindLastEntityOccurrence(Action):
+    """Find when an entity was last seen/used."""
+
+    name: ClassVar[str] = "find_last_entity_occurrence"
+    default_timeout: ClassVar[float] = 5.0
+
+    def __init__(
+        self,
+        db_path: Path | None = None,
+        api_key: str | None = None,
+    ) -> None:
+        super().__init__(db_path, api_key)
+        self._searcher: VectorSearcher | None = None
+
+    def _get_searcher(self) -> VectorSearcher:
+        if self._searcher is None:
+            self._searcher = VectorSearcher(
+                db_path=self.db_path or DB_PATH,
+                api_key=self.api_key,
+            )
+        return self._searcher
+
+    def execute(
+        self,
+        params: dict[str, Any],
+        context: ExecutionContext,
+    ) -> StepResult:
+        """
+        Find when an entity was last used/seen.
+
+        This is useful for queries like:
+        - "When did I last use Discord?"
+        - "When was the last time I talked to John?"
+        - "How long since I worked on Project X?"
+
+        Params:
+            entity_name: Name of the entity to find (required)
+            entity_type: Optional entity type filter (app, person, topic, etc.)
+
+        Returns:
+            StepResult with:
+            - found: bool - whether the entity was found
+            - last_occurrence: ISO timestamp of most recent occurrence
+            - context: Brief summary from the note
+            - note_id: ID of the matching note
+            - notes: List with the single matching note (for context accumulation)
+        """
+        start_time = time.time()
+        step_id = params.get("step_id", "find_last_entity_occurrence")
+
+        try:
+            entity_name = params.get("entity_name", "")
+            if not entity_name:
+                return StepResult(
+                    step_id=step_id,
+                    action=self.name,
+                    success=False,
+                    error="entity_name is required",
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                )
+
+            entity_type = params.get("entity_type")
+
+            searcher = self._get_searcher()
+            # Search with limit=1 to get only the most recent occurrence
+            notes = searcher.search_by_entity(
+                entity_name=entity_name,
+                entity_type=entity_type,
+                time_filter=None,  # No time filter - we want the most recent ever
+                limit=1,
+            )
+
+            if notes:
+                note = notes[0]
+                # Get a brief context snippet from the summary
+                summary = note.summary or ""
+                context_snippet = summary[:200] + "..." if len(summary) > 200 else summary
+
+                return StepResult(
+                    step_id=step_id,
+                    action=self.name,
+                    success=True,
+                    result={
+                        "found": True,
+                        "last_occurrence": note.start_ts.isoformat() if note.start_ts else None,
+                        "context": context_snippet,
+                        "note_id": note.note_id,
+                        "entity_name": entity_name,
+                        "entity_type": entity_type,
+                        "notes": [note.to_dict()],  # Include for context accumulation
+                    },
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                )
+            else:
+                return StepResult(
+                    step_id=step_id,
+                    action=self.name,
+                    success=True,
+                    result={
+                        "found": False,
+                        "entity_name": entity_name,
+                        "entity_type": entity_type,
+                        "notes": [],
+                    },
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                )
+
+        except Exception as e:
+            logger.error(f"Find last entity occurrence failed: {e}")
+            return StepResult(
+                step_id=step_id,
+                action=self.name,
+                success=False,
+                error=str(e),
+                execution_time_ms=(time.time() - start_time) * 1000,
+            )
+
+
+@ActionRegistry.register
 class AggregatesQuery(Action):
     """Query pre-computed aggregates (time rollups)."""
 

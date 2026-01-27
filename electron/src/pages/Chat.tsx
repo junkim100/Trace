@@ -1,61 +1,61 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChatInput } from '../components/ChatInput';
 import { TimeFilter, TimePreset, getTimeFilterHint } from '../components/TimeFilter';
 import { Results } from '../components/Results';
-import { Answer } from '../components/Answer';
 import { NoteViewer } from '../components/NoteViewer';
-import type { ChatResponse } from '../types/trace-api';
+import { ConversationSidebar } from '../components/ConversationSidebar';
+import { MessageThread } from '../components/MessageThread';
+import { ConversationProvider, useConversation } from '../contexts/ConversationContext';
+import type { ConversationSendResponse } from '../types/trace-api';
 
-export function Chat() {
+function ChatContent() {
   const navigate = useNavigate();
-  const [response, setResponse] = useState<ChatResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    currentConversation,
+    messages,
+    sending,
+    error,
+    sendMessage,
+    clearError,
+  } = useConversation();
+
   const [timePreset, setTimePreset] = useState<TimePreset>('all');
   const [customStart, setCustomStart] = useState<string>();
   const [customEnd, setCustomEnd] = useState<string>();
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const lastQueryRef = useRef<string>('');
-  const [followUpInput, setFollowUpInput] = useState('');
+  const [lastResponse, setLastResponse] = useState<ConversationSendResponse | null>(null);
 
   const handleQuery = useCallback(async (query: string) => {
-    lastQueryRef.current = query;
-    setLoading(true);
-    setError(null);
+    clearError();
 
-    try {
-      const timeFilter = getTimeFilterHint(timePreset, customStart, customEnd);
-      const result = await window.traceAPI.chat.query(query, {
-        timeFilter,
-        includeGraphExpansion: true,
-        includeAggregates: true,
-        maxResults: 10,
-      });
-      setResponse(result);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+    const timeFilter = getTimeFilterHint(timePreset, customStart, customEnd);
+    const result = await sendMessage(query, {
+      timeFilter,
+      includeGraphExpansion: true,
+      includeAggregates: true,
+      maxResults: 10,
+    });
 
-      // Check for API key related errors and redirect to setup
+    if (result) {
+      setLastResponse(result);
+    }
+
+    // Check for API key errors and redirect
+    if (error) {
       const isApiKeyError =
-        errorMessage.toLowerCase().includes('invalid api key') ||
-        errorMessage.toLowerCase().includes('api key') ||
-        errorMessage.includes('401') ||
-        errorMessage.toLowerCase().includes('authentication') ||
-        errorMessage.toLowerCase().includes('unauthorized');
+        error.toLowerCase().includes('invalid api key') ||
+        error.toLowerCase().includes('api key') ||
+        error.includes('401') ||
+        error.toLowerCase().includes('authentication') ||
+        error.toLowerCase().includes('unauthorized');
 
       if (isApiKeyError) {
-        // Navigate back to home to re-enter API key
         navigate('/');
         return;
       }
-
-      setError(errorMessage);
-      setResponse(null);
-    } finally {
-      setLoading(false);
     }
-  }, [timePreset, customStart, customEnd, navigate]);
+  }, [timePreset, customStart, customEnd, sendMessage, clearError, error, navigate]);
 
   const handleTimeFilterChange = useCallback((
     preset: TimePreset,
@@ -67,28 +67,12 @@ export function Chat() {
     setCustomEnd(end);
   }, []);
 
-  const handleRetry = useCallback(() => {
-    if (lastQueryRef.current) {
-      handleQuery(lastQueryRef.current);
-    }
-  }, [handleQuery]);
-
-  const handleFollowUpAnswer = useCallback(async (question: string, answer: string) => {
-    try {
-      await window.traceAPI.memory.learnFromResponse(question, answer);
-      // Clear the follow-up input and remove the follow-up from the response
-      setFollowUpInput('');
-      if (response) {
-        setResponse({ ...response, follow_up: null });
-      }
-    } catch (err) {
-      console.error('Failed to save follow-up answer:', err);
-    }
-  }, [response]);
+  // Get notes from the last response for the sidebar
+  const notes = lastResponse?.response?.notes || [];
 
   return (
     <div style={styles.container}>
-      {/* Titlebar area for dragging - leaves space for traffic lights */}
+      {/* Titlebar area for dragging */}
       <div className="titlebar" style={styles.titlebar}>
         <div style={styles.titlebarSpacer} />
         <button
@@ -130,50 +114,70 @@ export function Chat() {
       </div>
 
       <main style={styles.main}>
-        <div style={styles.sidebar}>
-          <div style={styles.filterSection}>
-            <h3 style={styles.sectionTitle}>Time Range</h3>
-            <TimeFilter
-              value={timePreset}
-              customStart={customStart}
-              customEnd={customEnd}
-              onChange={handleTimeFilterChange}
-            />
-          </div>
-
-          <div style={styles.resultsSection}>
-            <Results
-              notes={response?.notes || []}
-              onNoteClick={setSelectedNoteId}
-              loading={loading}
-            />
-          </div>
-
-          {/* Logo at bottom of sidebar */}
+        {/* Conversations Sidebar (left) */}
+        <div style={styles.conversationsSidebar}>
+          <ConversationSidebar />
+          {/* Logo at bottom */}
           <div style={styles.sidebarFooter}>
             <span style={styles.logoText}>TRACE</span>
           </div>
         </div>
 
-        <div style={styles.content}>
-          <div style={styles.answerArea}>
-            <Answer
-              response={response}
-              loading={loading}
-              error={error}
-              onCitationClick={setSelectedNoteId}
-              onRetry={handleRetry}
-              onSuggestionClick={handleQuery}
-              onFollowUpAnswer={handleFollowUpAnswer}
-              followUpInputValue={followUpInput}
-              onFollowUpInputChange={setFollowUpInput}
+        {/* Chat content (center) */}
+        <div style={styles.chatContent}>
+          {/* Message thread */}
+          <div style={styles.messageArea}>
+            <MessageThread onCitationClick={setSelectedNoteId} />
+          </div>
+
+          {/* Error display */}
+          {error && (
+            <div style={styles.errorBanner}>
+              <span>{error}</span>
+              <button onClick={clearError} style={styles.errorDismiss}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Chat input with time filter */}
+          <div style={styles.inputArea}>
+            <div style={styles.inputRow}>
+              <TimeFilter
+                value={timePreset}
+                customStart={customStart}
+                customEnd={customEnd}
+                onChange={handleTimeFilterChange}
+                compact
+              />
+            </div>
+            <ChatInput
+              onSubmit={handleQuery}
+              disabled={sending}
+              placeholder={
+                currentConversation
+                  ? "Continue the conversation..."
+                  : "Ask about your activity..."
+              }
             />
           </div>
-          <ChatInput
-            onSubmit={handleQuery}
-            disabled={loading}
-            placeholder="Ask about your activity..."
-          />
+        </div>
+
+        {/* Results sidebar (right) */}
+        <div style={styles.resultsSidebar}>
+          <div style={styles.filterSection}>
+            <h3 style={styles.sectionTitle}>Related Notes</h3>
+          </div>
+          <div style={styles.resultsSection}>
+            <Results
+              notes={notes}
+              onNoteClick={setSelectedNoteId}
+              loading={sending}
+            />
+          </div>
         </div>
       </main>
 
@@ -182,6 +186,14 @@ export function Chat() {
         onClose={() => setSelectedNoteId(null)}
       />
     </div>
+  );
+}
+
+export function Chat() {
+  return (
+    <ConversationProvider>
+      <ChatContent />
+    </ConversationProvider>
   );
 }
 
@@ -233,9 +245,61 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     overflow: 'hidden',
   },
-  sidebar: {
-    width: '320px',
+  conversationsSidebar: {
+    width: '240px',
     borderRight: '1px solid var(--border)',
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '1rem',
+  },
+  chatContent: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+  },
+  messageArea: {
+    flex: 1,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  errorBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0.625rem 1rem',
+    margin: '0 1rem',
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    border: '1px solid rgba(255, 59, 48, 0.2)',
+    borderRadius: '8px',
+    color: '#ff3b30',
+    fontSize: '0.875rem',
+  },
+  errorDismiss: {
+    backgroundColor: 'transparent',
+    border: 'none',
+    color: '#ff3b30',
+    cursor: 'pointer',
+    padding: '0.25rem',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  inputArea: {
+    padding: '0.75rem 1.5rem 1.5rem',
+    borderTop: '1px solid var(--border)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  inputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  resultsSidebar: {
+    width: '280px',
+    borderLeft: '1px solid var(--border)',
     display: 'flex',
     flexDirection: 'column',
     padding: '1rem',
@@ -258,17 +322,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'auto',
-  },
-  content: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    minWidth: 0,
-  },
-  answerArea: {
-    flex: 1,
-    overflow: 'auto',
-    padding: '1.5rem',
   },
 };
 
