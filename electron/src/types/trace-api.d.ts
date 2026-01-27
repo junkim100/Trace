@@ -404,6 +404,26 @@ export interface SettingsAPI {
 
   /** Validate API key against OpenAI API */
   validateApiKey(apiKey?: string): Promise<{ valid: boolean; error: string | null }>;
+
+  /** Get summary of data that would be deleted by a reset */
+  getDataSummary(): Promise<{
+    notes_count: number;
+    notes_size_bytes: number;
+    database_exists: boolean;
+    tables_with_data: { table: string; count: number }[];
+    memory_exists: boolean;
+    cache_size_bytes: number;
+  }>;
+
+  /** Reset all data (notes, database, memory, cache) - DESTRUCTIVE */
+  resetAllData(): Promise<{
+    success: boolean;
+    notes_deleted: boolean;
+    database_cleared: boolean;
+    memory_cleared: boolean;
+    cache_cleared: boolean;
+    errors: string[];
+  }>;
 }
 
 /** Appearance settings */

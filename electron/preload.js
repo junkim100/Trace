@@ -231,6 +231,14 @@ contextBridge.exposeInMainWorld('traceAPI', {
     validateApiKey: (apiKey) =>
       ipcRenderer.invoke('python:call', 'settings.validate_api_key', { api_key: apiKey }),
 
+    // Get data summary for reset confirmation
+    getDataSummary: () =>
+      ipcRenderer.invoke('python:call', 'settings.get_data_summary', {}),
+
+    // Reset all data (DESTRUCTIVE)
+    resetAllData: () =>
+      ipcRenderer.invoke('python:call', 'settings.reset_all_data', {}),
+
     // Appearance settings (dock visibility, launch at login)
     getAppearance: () => ipcRenderer.invoke('python:call', 'settings.get_appearance', {}),
     setAppearance: (settings) =>

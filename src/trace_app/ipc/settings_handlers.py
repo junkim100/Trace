@@ -449,6 +449,55 @@ def handle_reset_settings(params: dict[str, Any]) -> dict[str, Any]:
     return {"success": success}
 
 
+@handler("settings.reset_all_data")
+def handle_reset_all_data(params: dict[str, Any]) -> dict[str, Any]:
+    """Reset all Trace data (notes, database, memory, cache).
+
+    WARNING: This is a destructive operation that cannot be undone.
+    Users should export their data first.
+
+    Returns:
+        {
+            "success": bool,
+            "notes_deleted": bool,
+            "database_cleared": bool,
+            "memory_cleared": bool,
+            "cache_cleared": bool,
+            "errors": list[str]
+        }
+    """
+    from src.core.reset import reset_all_data
+
+    logger.warning("User initiated full data reset")
+    result = reset_all_data()
+
+    if result["success"]:
+        logger.info("Data reset completed successfully")
+    else:
+        logger.error(f"Data reset completed with errors: {result['errors']}")
+
+    return result
+
+
+@handler("settings.get_data_summary")
+def handle_get_data_summary(params: dict[str, Any]) -> dict[str, Any]:
+    """Get a summary of all data that would be deleted by a reset.
+
+    Returns:
+        {
+            "notes_count": int,
+            "notes_size_bytes": int,
+            "database_exists": bool,
+            "tables_with_data": list[dict],
+            "memory_exists": bool,
+            "cache_size_bytes": int
+        }
+    """
+    from src.core.reset import get_data_summary
+
+    return get_data_summary()
+
+
 @handler("settings.validate_api_key")
 def handle_validate_api_key(params: dict[str, Any]) -> dict[str, Any]:
     """Validate an OpenAI API key by making a test API call.

@@ -64,6 +64,18 @@ export function Settings() {
   // Shortcuts state
   const [shortcutsEnabled, setShortcutsEnabled] = useState(true);
 
+  // Reset data state
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [dataSummary, setDataSummary] = useState<{
+    notes_count: number;
+    notes_size_bytes: number;
+    database_exists: boolean;
+    tables_with_data: { table: string; count: number }[];
+    memory_exists: boolean;
+    cache_size_bytes: number;
+  } | null>(null);
+
   const loadBlocklist = async () => {
     setBlocklistLoading(true);
     try {
@@ -100,6 +112,48 @@ export function Settings() {
       console.error('Failed to load memory summary:', err);
     } finally {
       setMemoryLoading(false);
+    }
+  };
+
+  const loadDataSummary = async () => {
+    try {
+      const result = await window.traceAPI.settings.getDataSummary();
+      setDataSummary(result);
+    } catch (err) {
+      console.error('Failed to load data summary:', err);
+    }
+  };
+
+  const handleResetAllData = async () => {
+    setResetLoading(true);
+    try {
+      const result = await window.traceAPI.settings.resetAllData();
+      if (result.success) {
+        setMessage({ type: 'success', text: 'All data has been reset successfully.' });
+        setShowResetConfirm(false);
+        // Reload summaries
+        loadDataSummary();
+        loadMemorySummary();
+        // Also reload export summary
+        try {
+          const exportResult = await window.traceAPI.export.summary();
+          if (exportResult.success) {
+            setExportSummary({
+              notes_in_db: exportResult.notes_in_db,
+              markdown_files: exportResult.markdown_files,
+              entities: exportResult.entities,
+              edges: exportResult.edges,
+            });
+          }
+        } catch {}
+      } else {
+        setMessage({ type: 'error', text: `Reset completed with errors: ${result.errors.join(', ')}` });
+      }
+    } catch (err) {
+      console.error('Failed to reset data:', err);
+      setMessage({ type: 'error', text: 'Failed to reset data. Please try again.' });
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -155,6 +209,7 @@ export function Settings() {
     loadExportSummary();
     loadInstalledApps();
     loadMemorySummary();
+    loadDataSummary();
 
     // Load app version
     window.traceAPI.getVersion().then(setAppVersion).catch(() => {});
@@ -392,6 +447,14 @@ export function Settings() {
     if (months === 12) return '1 year';
     if (months === 24) return '2 years';
     return `${months} months`;
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 
   if (loading) {
@@ -1171,6 +1234,76 @@ export function Settings() {
           >
             {exportLoading ? 'Exporting...' : 'Export to ZIP Archive'}
           </button>
+        </section>
+
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>Reset All Data</h2>
+          <p style={styles.description}>
+            Permanently delete all your Trace data including notes, entities, relationships, and user memory.
+            <strong style={{ color: '#ef4444' }}> This action cannot be undone.</strong>
+          </p>
+
+          {dataSummary && (dataSummary.notes_count > 0 || dataSummary.memory_exists) && (
+            <div style={styles.resetWarning}>
+              <div style={styles.warningHeader}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <span>Data that will be deleted:</span>
+              </div>
+              <ul style={styles.resetDataList}>
+                {dataSummary.notes_count > 0 && (
+                  <li>{dataSummary.notes_count} notes ({formatBytes(dataSummary.notes_size_bytes)})</li>
+                )}
+                {dataSummary.tables_with_data.map((t) => (
+                  <li key={t.table}>{t.count} {t.table.replace('_', ' ')}</li>
+                ))}
+                {dataSummary.memory_exists && <li>User memory profile</li>}
+                {dataSummary.cache_size_bytes > 0 && (
+                  <li>Cache ({formatBytes(dataSummary.cache_size_bytes)})</li>
+                )}
+              </ul>
+              <p style={styles.backupReminder}>
+                We recommend exporting your data first using the Export feature above.
+              </p>
+            </div>
+          )}
+
+          {!showResetConfirm ? (
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              style={styles.resetButton}
+            >
+              Reset All Data
+            </button>
+          ) : (
+            <div style={styles.resetConfirmBox}>
+              <p style={styles.resetConfirmText}>
+                Are you sure you want to delete all your data? This cannot be undone.
+              </p>
+              <div style={styles.resetConfirmButtons}>
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  style={styles.cancelButton}
+                  disabled={resetLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleResetAllData}
+                  disabled={resetLoading}
+                  style={{
+                    ...styles.confirmResetButton,
+                    ...(resetLoading ? styles.saveButtonDisabled : {}),
+                  }}
+                >
+                  {resetLoading ? 'Resetting...' : 'Yes, Delete Everything'}
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         <section style={styles.section}>
@@ -1969,6 +2102,83 @@ const styles: Record<string, React.CSSProperties> = {
   confirmDangerButton: {
     padding: '0.5rem 1rem',
     backgroundColor: '#ff3b30',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '0.85rem',
+    fontWeight: 500,
+    color: 'white',
+    cursor: 'pointer',
+  },
+  // Reset data styles
+  resetWarning: {
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    border: '1px solid rgba(255, 59, 48, 0.3)',
+    borderRadius: '8px',
+    padding: '1rem',
+    marginBottom: '1rem',
+  },
+  warningHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: '#ef4444',
+    marginBottom: '0.75rem',
+  },
+  resetDataList: {
+    margin: '0 0 0.75rem 1.25rem',
+    padding: 0,
+    fontSize: '0.85rem',
+    color: 'var(--text-primary)',
+    lineHeight: 1.6,
+  },
+  backupReminder: {
+    fontSize: '0.85rem',
+    color: 'var(--text-secondary)',
+    fontStyle: 'italic',
+    margin: 0,
+  },
+  resetButton: {
+    backgroundColor: 'transparent',
+    border: '1px solid rgba(255, 59, 48, 0.5)',
+    borderRadius: '8px',
+    padding: '0.75rem 1.5rem',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: '#ef4444',
+    cursor: 'pointer',
+    width: '100%',
+  },
+  resetConfirmBox: {
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    border: '1px solid rgba(255, 59, 48, 0.3)',
+    borderRadius: '8px',
+    padding: '1rem',
+  },
+  resetConfirmText: {
+    fontSize: '0.9rem',
+    color: 'var(--text-primary)',
+    margin: '0 0 1rem 0',
+    lineHeight: 1.5,
+  },
+  resetConfirmButtons: {
+    display: 'flex',
+    gap: '0.5rem',
+    justifyContent: 'flex-end',
+  },
+  cancelButton: {
+    padding: '0.5rem 1rem',
+    backgroundColor: 'var(--bg-secondary)',
+    border: '1px solid var(--border)',
+    borderRadius: '6px',
+    fontSize: '0.85rem',
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+  },
+  confirmResetButton: {
+    padding: '0.5rem 1rem',
+    backgroundColor: '#ef4444',
     border: 'none',
     borderRadius: '6px',
     fontSize: '0.85rem',

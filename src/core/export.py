@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from src.core.paths import NOTES_DIR
+from src.core.paths import APP_SUPPORT_DIR, NOTES_DIR
 from src.db.migrations import get_connection
 
 logger = logging.getLogger(__name__)
@@ -268,6 +268,7 @@ class TraceExporter:
         Contains:
         - metadata.json (entities, edges, note metadata)
         - notes/ directory with all Markdown files
+        - MEMORY.md (user memory/profile if exists)
 
         Args:
             output_path: Path to output ZIP file
@@ -312,6 +313,12 @@ class TraceExporter:
                     for md_file in notes_dir.rglob("*.md"):
                         arcname = "notes" / md_file.relative_to(notes_dir)
                         zipf.write(md_file, arcname)
+
+                # Add user memory if it exists
+                memory_path = APP_SUPPORT_DIR / "MEMORY.md"
+                if memory_path.exists():
+                    zipf.write(memory_path, "MEMORY.md")
+                    logger.info("Included user memory in export")
 
         export_time = (datetime.now() - start_time).total_seconds()
 
@@ -382,6 +389,10 @@ class TraceExporter:
             else 0
         )
 
+        # Check for user memory
+        memory_path = APP_SUPPORT_DIR / "MEMORY.md"
+        has_memory = memory_path.exists()
+
         return {
             "notes_in_db": notes_count,
             "markdown_files": md_count,
@@ -389,6 +400,7 @@ class TraceExporter:
             "edges": edges_count,
             "aggregates": aggregates_count,
             "estimated_markdown_size_bytes": md_size,
+            "has_memory": has_memory,
         }
 
 
