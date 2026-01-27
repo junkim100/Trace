@@ -18,6 +18,7 @@ from pathlib import Path
 
 import tiktoken
 
+from src.capture.calendar import CalendarCapture, CalendarEvent
 from src.core.paths import DB_PATH
 from src.db.migrations import get_connection
 from src.summarize.keyframes import SelectedKeyframe
@@ -99,6 +100,9 @@ class HourlyEvidence:
     # Location summary
     locations: list[str] = field(default_factory=list)
 
+    # Calendar events
+    calendar_events: list[CalendarEvent] = field(default_factory=list)
+
     # Statistics
     total_screenshots: int = 0
     total_events: int = 0
@@ -136,6 +140,7 @@ class EvidenceAggregator:
         self.db_path = Path(db_path) if db_path else DB_PATH
         self.max_text_tokens = max_text_tokens
         self.max_snippet_tokens = max_snippet_tokens
+        self._calendar_capture = CalendarCapture()
 
         try:
             self._encoding = tiktoken.get_encoding(DEFAULT_ENCODING)
@@ -198,6 +203,13 @@ class EvidenceAggregator:
 
         finally:
             conn.close()
+
+        # Get calendar events (outside of DB connection)
+        try:
+            evidence.calendar_events = self._calendar_capture.get_events_for_hour(hour_start)
+        except Exception as e:
+            logger.warning(f"Failed to get calendar events: {e}")
+            evidence.calendar_events = []
 
         return evidence
 
@@ -416,12 +428,20 @@ class EvidenceAggregator:
             except (ValueError, TypeError, json.JSONDecodeError):
                 continue
 
-            track = np_data.get("track", "")
+            # Support both 'title' (MediaRemote) and 'track' (legacy) field names
+            track = np_data.get("title") or np_data.get("track", "")
             artist = np_data.get("artist", "")
             album = np_data.get("album")
-            app = np_data.get("app", "")
+            # Support both 'app_name' (MediaRemote) and 'app' (legacy) field names
+            app = np_data.get("app_name") or np_data.get("app", "")
 
+            # Skip if no track/artist info
             if not track or not artist:
+                continue
+
+            # Skip if playback is paused (only include actively playing music)
+            is_playing = np_data.get("is_playing", True)
+            if not is_playing:
                 continue
 
             # Clip to hour boundaries
@@ -534,6 +554,20 @@ class EvidenceAggregator:
                 minutes = seconds // 60
                 if minutes > 0:
                     lines.append(f"- {app}: {minutes}m")
+
+        # Add calendar events
+        if evidence.calendar_events:
+            lines.append("")
+            lines.append("## Calendar Events")
+            for event in evidence.calendar_events:
+                time_str = (
+                    f"{event.start_time.strftime('%H:%M')} - {event.end_time.strftime('%H:%M')}"
+                )
+                attendee_str = ""
+                if event.attendees:
+                    attendee_str = f" (with {', '.join(event.attendees[:3])})"
+                location_str = f" at {event.location}" if event.location else ""
+                lines.append(f"- [{time_str}] {event.title}{attendee_str}{location_str}")
 
         return "\n".join(lines)
 

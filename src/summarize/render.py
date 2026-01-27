@@ -45,6 +45,8 @@ class MarkdownRenderer:
         hour_start: datetime,
         hour_end: datetime,
         location: str | None = None,
+        app_durations: dict[str, int] | None = None,
+        calendar_events: list | None = None,
     ) -> str:
         """
         Render a summary to Markdown.
@@ -78,6 +80,44 @@ class MarkdownRenderer:
         lines.append("")
         lines.append(summary.summary)
         lines.append("")
+
+        # Calendar Events section
+        if calendar_events:
+            lines.append("## Calendar")
+            lines.append("")
+            for event in calendar_events:
+                time_str = (
+                    f"{event.start_time.strftime('%H:%M')} - {event.end_time.strftime('%H:%M')}"
+                )
+                attendee_str = ""
+                if event.attendees:
+                    # Show up to 3 attendees
+                    names = event.attendees[:3]
+                    if len(event.attendees) > 3:
+                        names.append(f"+{len(event.attendees) - 3} more")
+                    attendee_str = f" (with {', '.join(names)})"
+                location_str = f" @ {event.location}" if event.location else ""
+                lines.append(f"- **{time_str}**: {event.title}{attendee_str}{location_str}")
+            lines.append("")
+
+        # App Usage section (time spent per app)
+        if app_durations:
+            # Sort by duration descending
+            sorted_apps = sorted(app_durations.items(), key=lambda x: x[1], reverse=True)
+            # Filter to apps with at least 1 minute of usage
+            significant_apps = [(app, secs) for app, secs in sorted_apps if secs >= 60]
+            if significant_apps:
+                lines.append("## App Usage")
+                lines.append("")
+                for app, seconds in significant_apps:
+                    minutes = seconds // 60
+                    if minutes >= 60:
+                        hours = minutes // 60
+                        mins = minutes % 60
+                        lines.append(f"- **{app}**: {hours}h {mins}m")
+                    else:
+                        lines.append(f"- **{app}**: {minutes}m")
+                lines.append("")
 
         # Activities section
         if summary.activities:
@@ -270,6 +310,8 @@ class MarkdownRenderer:
         hour_end: datetime,
         file_path: Path,
         location: str | None = None,
+        app_durations: dict[str, int] | None = None,
+        calendar_events: list | None = None,
     ) -> bool:
         """
         Render a summary and save to file.
@@ -290,7 +332,9 @@ class MarkdownRenderer:
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Render content
-            content = self.render(summary, note_id, hour_start, hour_end, location)
+            content = self.render(
+                summary, note_id, hour_start, hour_end, location, app_durations, calendar_events
+            )
 
             # Write to file
             with open(file_path, "w", encoding="utf-8") as f:

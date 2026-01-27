@@ -291,6 +291,8 @@ class HourlySummarizer:
             hour_end=hour_end,
             file_path=file_path,
             location=evidence.locations[0] if evidence.locations else None,
+            app_durations=evidence.app_durations if evidence.app_durations else None,
+            calendar_events=evidence.calendar_events if evidence.calendar_events else None,
         )
 
         if not saved:
