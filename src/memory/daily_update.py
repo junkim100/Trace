@@ -22,6 +22,7 @@ from openai import OpenAI
 from src.core.config import get_api_key
 from src.core.paths import DB_PATH, NOTES_DIR
 from src.db.migrations import get_connection
+from src.memory.guidelines import get_extraction_prompt_guidelines
 from src.memory.memory import (
     MEMORY_EXTRACTION_MODEL,
     MemoryLogEntry,
@@ -185,6 +186,9 @@ def extract_memory_updates(
         "\n".join(formatted_hourly) if formatted_hourly else "No hourly data available."
     )
 
+    # Get guidelines from centralized module
+    guidelines = get_extraction_prompt_guidelines()
+
     prompt = f"""You are analyzing a day's activity to extract DURABLE memory updates.
 
 ## Daily Summary
@@ -198,17 +202,7 @@ def extract_memory_updates(
 
 ---
 
-## Extraction Guidelines (from clawdbot principles)
-
-1. **DURABLE ONLY**: Extract facts likely to remain true over time. Skip one-time events unless they reveal lasting patterns.
-
-2. **BE SPECIFIC**: "Uses VS Code with Vim bindings for Python development" > "Uses an IDE"
-
-3. **NEW INFORMATION**: Only extract things NOT already in the current memory.
-
-4. **PATTERNS OVER EVENTS**: "Tends to do deep work in mornings" > "Worked on code this morning"
-
-5. **ACTIONABLE**: Information should help personalize future assistance.
+{guidelines}
 
 ---
 
