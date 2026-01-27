@@ -215,7 +215,7 @@ class HourlySummarizer:
         is_empty_summary = not summary.summary.strip() or any(
             indicator in summary_lower for indicator in empty_summary_indicators
         )
-        if is_empty_summary:
+        if is_empty_summary and not force:
             logger.info(
                 f"Empty/placeholder summary for {hour_start.isoformat()}, skipping note creation"
             )
@@ -238,10 +238,13 @@ class HourlySummarizer:
                 skipped_idle=True,
                 idle_reason="Empty or placeholder summary",
             )
+        elif is_empty_summary and force:
+            logger.info("Empty summary detected but force=True, creating note anyway")
 
         # Step 3d: Check if LLM detected idle/AFK - skip note creation if so
         # ONLY skip if LLM explicitly sets is_idle=true to avoid losing real activity
-        if summary.is_idle:
+        # Unless force=True, in which case create the note anyway
+        if summary.is_idle and not force:
             idle_reason = summary.idle_reason or "User detected as idle/AFK"
             logger.info(f"Idle detected for {hour_start.isoformat()}: {idle_reason}")
 
@@ -265,6 +268,8 @@ class HourlySummarizer:
                 skipped_idle=True,
                 idle_reason=idle_reason,
             )
+        elif summary.is_idle and force:
+            logger.info("Idle detected but force=True, creating note anyway")
 
         # Step 4: Web enrichment for sports matches and contextual info (if not skipped)
         logger.debug("Enriching summary with web data...")
