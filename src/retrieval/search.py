@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from src.core.paths import DB_PATH
+from src.db.fts import init_fts_table, search_fts
 from src.db.migrations import get_connection
 from src.db.vectors import (
     init_vector_table,
@@ -271,6 +272,170 @@ class VectorSearcher:
                 matches=matches,
                 total_notes_searched=total_searched,
                 embedding_computed=True,
+            )
+
+        finally:
+            conn.close()
+
+    def hybrid_search(
+        self,
+        query: str,
+        time_filter: TimeFilter | None = None,
+        limit: int = 10,
+        min_score: float = 0.35,
+        vector_weight: float = 0.7,
+        fts_weight: float = 0.3,
+    ) -> SearchResult:
+        """
+        Hybrid search combining vector similarity + FTS5 keyword matching.
+
+        Inspired by clawdbot's approach:
+        - Vector search captures semantic meaning (70% weight)
+        - FTS5 search captures exact keywords, names, dates (30% weight)
+
+        Scoring: final_score = (vector_score × vector_weight) + (fts_score × fts_weight)
+
+        Args:
+            query: Natural language query
+            time_filter: Optional time range filter
+            limit: Maximum results to return
+            min_score: Minimum hybrid score threshold (0-1)
+            vector_weight: Weight for vector similarity (default 0.7)
+            fts_weight: Weight for FTS keyword matching (default 0.3)
+
+        Returns:
+            SearchResult with ranked matches
+        """
+        # Compute query embedding for vector search
+        query_embedding = self._embedding_computer.compute_for_query(query)
+
+        conn = get_connection(self.db_path)
+        try:
+            load_sqlite_vec(conn)
+            init_vector_table(conn)
+            init_fts_table(conn)
+
+            # Fetch more results than needed to allow for filtering
+            fetch_limit = limit * 5
+
+            # 1. Vector search
+            vector_results = {}
+            if query_embedding is not None:
+                similar_results = query_similar(
+                    conn,
+                    query_embedding,
+                    limit=fetch_limit,
+                    source_type="note",
+                )
+                for result in similar_results:
+                    note_id = result["source_id"]
+                    distance = result["distance"]
+                    # Convert L2 distance to similarity score [0, 1]
+                    vector_score = 1 / (1 + distance)
+                    vector_results[note_id] = vector_score
+
+            # 2. FTS5 search
+            fts_results = {}
+            fts_matches = search_fts(conn, query, limit=fetch_limit)
+            for result in fts_matches:
+                note_id = result["note_id"]
+                fts_results[note_id] = result["fts_score"]
+
+            # 3. Merge results with weighted scoring
+            # When both vector and FTS are available, use weighted combination
+            # When only one is available, use that score directly (fallback mode)
+            all_note_ids = set(vector_results.keys()) | set(fts_results.keys())
+            merged_scores = {}
+
+            has_vector = len(vector_results) > 0
+            has_fts = len(fts_results) > 0
+
+            for note_id in all_note_ids:
+                vec_score = vector_results.get(note_id, 0.0)
+                fts_score = fts_results.get(note_id, 0.0)
+
+                # Compute hybrid score based on what's available
+                if has_vector and has_fts:
+                    # Both available: use weighted combination
+                    hybrid_score = (vec_score * vector_weight) + (fts_score * fts_weight)
+                elif has_vector:
+                    # Vector only: use vector score directly
+                    hybrid_score = vec_score
+                else:
+                    # FTS only (vector failed): use FTS score directly
+                    hybrid_score = fts_score
+
+                merged_scores[note_id] = {
+                    "note_id": note_id,
+                    "hybrid_score": hybrid_score,
+                    "vector_score": vec_score,
+                    "fts_score": fts_score,
+                }
+
+            # 4. Filter by minimum score
+            filtered = [s for s in merged_scores.values() if s["hybrid_score"] >= min_score]
+
+            # 5. Sort by hybrid score
+            filtered.sort(key=lambda x: x["hybrid_score"], reverse=True)
+
+            # 6. Get note details and apply time filter
+            note_ids = [s["note_id"] for s in filtered]
+            note_lookup = self._get_notes_by_ids(conn, note_ids)
+
+            matches = []
+            total_searched = 0
+
+            for scored in filtered:
+                note_id = scored["note_id"]
+                if note_id not in note_lookup:
+                    continue
+
+                note = note_lookup[note_id]
+                note_start = datetime.fromisoformat(note["start_ts"])
+                note_end = datetime.fromisoformat(note["end_ts"])
+
+                # Apply time filter
+                if time_filter:
+                    if not time_filter.overlaps(note_start, note_end):
+                        continue
+
+                total_searched += 1
+
+                # Parse JSON payload
+                try:
+                    payload = json.loads(note["json_payload"])
+                    summary = payload.get("summary", "")
+                    categories = payload.get("categories", [])
+                    entities = payload.get("entities", [])
+                except (json.JSONDecodeError, TypeError):
+                    summary = ""
+                    categories = []
+                    entities = []
+
+                matches.append(
+                    NoteMatch(
+                        note_id=note_id,
+                        note_type=note["note_type"],
+                        start_ts=note_start,
+                        end_ts=note_end,
+                        file_path=note["file_path"],
+                        summary=summary,
+                        categories=categories,
+                        entities=entities,
+                        distance=0.0,  # Not meaningful for hybrid
+                        score=scored["hybrid_score"],
+                    )
+                )
+
+                if len(matches) >= limit:
+                    break
+
+            return SearchResult(
+                query=query,
+                time_filter=time_filter,
+                matches=matches,
+                total_notes_searched=total_searched,
+                embedding_computed=query_embedding is not None,
             )
 
         finally:

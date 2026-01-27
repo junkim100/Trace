@@ -58,7 +58,7 @@ def _parse_time_filter_param(params: dict[str, Any]) -> TimeFilter | None:
 
 @ActionRegistry.register
 class SemanticSearch(Action):
-    """Vector similarity search over notes."""
+    """Hybrid search combining vector similarity + FTS5 keyword matching."""
 
     name: ClassVar[str] = "semantic_search"
     default_timeout: ClassVar[float] = 8.0
@@ -85,13 +85,17 @@ class SemanticSearch(Action):
         context: ExecutionContext,
     ) -> StepResult:
         """
-        Execute semantic search.
+        Execute hybrid search (vector similarity + FTS5 keywords).
+
+        Uses clawdbot-inspired hybrid scoring:
+        - 70% weight on vector similarity (semantic meaning)
+        - 30% weight on FTS5 keyword matching (exact terms)
 
         Params:
             query: Search query string
             time_filter: Optional time filter
             limit: Max results (default 10)
-            min_score: Minimum similarity score (default 0.0)
+            min_score: Minimum hybrid score (default 0.35)
         """
         start_time = time.time()
         step_id = params.get("step_id", "semantic_search")
@@ -109,10 +113,10 @@ class SemanticSearch(Action):
 
             time_filter = _parse_time_filter_param(params)
             limit = params.get("limit", 10)
-            min_score = params.get("min_score", 0.0)
+            min_score = params.get("min_score", 0.35)
 
             searcher = self._get_searcher()
-            result = searcher.search(
+            result = searcher.hybrid_search(
                 query=query,
                 time_filter=time_filter,
                 limit=limit,
