@@ -359,6 +359,13 @@ def cleanup_empty_notes(db_path: Path | str | None = None, dry_run: bool = True)
         "no summary available",
         "no activity detected",
         "no meaningful activity",
+        "no activity details were captured",
+        "no activity details captured",
+        "no details were captured",
+        "missing note",
+        "wasn't enough evidence",
+        "isn't enough evidence",
+        "no evidence to",
     ]
 
     conn = get_connection(db_path)

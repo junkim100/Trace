@@ -203,6 +203,13 @@ class HourlySummarizer:
             "no summary available",
             "no activity detected",
             "no meaningful activity",
+            "no activity details were captured",
+            "no activity details captured",
+            "no details were captured",
+            "missing note",
+            "wasn't enough evidence",
+            "isn't enough evidence",
+            "no evidence to",
         ]
         summary_lower = summary.summary.lower().strip()
         is_empty_summary = not summary.summary.strip() or any(
