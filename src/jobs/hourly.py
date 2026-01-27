@@ -454,10 +454,11 @@ class HourlyJobScheduler:
             logger.warning("Scheduler is already running")
             return
 
-        # Add hourly job at minute 5 of each hour (giving time for capture to complete)
+        # Add hourly job at exactly the hour boundary (e.g., 17:00 for 16:00-17:00)
+        # This ensures the 3am daily note includes the 2-3am hour from that day
         self.scheduler.add_job(
             self._hourly_job,
-            trigger=CronTrigger(minute=5),
+            trigger=CronTrigger(minute=0),
             id="hourly_summarization",
             name="Hourly Summarization",
             replace_existing=True,

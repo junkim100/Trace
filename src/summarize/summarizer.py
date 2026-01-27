@@ -219,10 +219,14 @@ class HourlySummarizer:
             logger.info(
                 f"Empty/placeholder summary for {hour_start.isoformat()}, skipping note creation"
             )
-            # Clean up screenshot folder
-            cleanup_success = delete_hourly_screenshot_dir(hour_start)
-            if cleanup_success:
-                logger.info(f"Deleted screenshot folder for empty hour {hour_start.isoformat()}")
+            # CRITICAL: Do NOT delete screenshots here!
+            # Screenshots should only be deleted after a note is successfully saved.
+            # If we delete now, the data is lost forever with no way to recover or reprocess.
+            # The screenshots will be cleaned up by daily revision after the day is complete.
+            logger.warning(
+                f"Skipping hour {hour_start.isoformat()} due to empty summary - "
+                f"screenshots preserved for potential reprocessing"
+            )
             return SummarizationResult(
                 success=True,
                 note_id=None,
@@ -241,11 +245,14 @@ class HourlySummarizer:
             idle_reason = summary.idle_reason or "User detected as idle/AFK"
             logger.info(f"Idle detected for {hour_start.isoformat()}: {idle_reason}")
 
-            # Still clean up screenshot folder even for idle hours
-            logger.debug("Cleaning up screenshot folder for idle hour...")
-            cleanup_success = delete_hourly_screenshot_dir(hour_start)
-            if cleanup_success:
-                logger.info(f"Deleted screenshot folder for idle hour {hour_start.isoformat()}")
+            # CRITICAL: Do NOT delete screenshots here!
+            # Screenshots should only be deleted after a note is successfully saved.
+            # If we delete now, the data is lost forever with no way to recover or reprocess.
+            # The screenshots will be cleaned up by daily revision after the day is complete.
+            logger.warning(
+                f"Skipping hour {hour_start.isoformat()} due to idle detection - "
+                f"screenshots preserved for potential reprocessing"
+            )
 
             return SummarizationResult(
                 success=True,
