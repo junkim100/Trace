@@ -65,19 +65,52 @@ class TriageResult:
 
 TRIAGE_SYSTEM_PROMPT = """You are a screenshot classifier for a personal activity tracker.
 
-Analyze the screenshot and provide a JSON response with:
+## CRITICAL: Understanding Desktop vs Active Windows
+
+**Desktop Wallpaper is NOT Activity:**
+- The background image (wallpaper) showing behind windows is NOT user activity
+- Common wallpapers: city skylines, nature scenes, abstract art, gradients, space images
+- If you see a beautiful landscape/cityscape IN THE BACKGROUND → ignore it, it's just wallpaper
+- ONLY classify as "idle" if there are NO application windows open
+
+**Active vs Idle Detection:**
+- "idle" means: ONLY desktop showing, no application windows, screensaver, lock screen, or login screen
+- If ANY application window is visible (even partially), this is NOT idle
+- A window with wallpaper visible around/behind it = ACTIVE, not idle
+- Even a small Finder window on a beautiful wallpaper = NOT idle
+
+## Classification Categories
+Provide a JSON response with:
 1. category: One of [transition, document, media, browsing, idle, communication, creative, gaming, other]
 2. importance_score: 0.0 to 1.0 indicating how representative/important this frame is
-3. description: Brief (1-2 sentences) description of what's visible
-4. has_text: boolean - is there significant readable text on screen?
+3. description: Brief (1-2 sentences) describing ONLY the active application/window, NOT the wallpaper
+4. has_text: boolean - is there significant readable text in the ACTIVE WINDOW?
 5. has_document: boolean - is a document, code file, or PDF being viewed?
 6. has_media: boolean - is video/streaming content visible?
 
-Scoring guidelines:
-- High (0.8-1.0): Clear activity, transition moment, important content visible
-- Medium (0.5-0.7): Normal activity, some useful context
-- Low (0.2-0.4): Static content, minimal activity
-- Very low (0.0-0.2): Idle, locked screen, screensaver
+## Category Guidelines
+- idle: ONLY when NO windows are open - just desktop, screensaver, or lock screen
+- transition: App switching moment, window being opened/closed
+- document: Code editors, PDFs, Word docs, text files, spreadsheets
+- browsing: Web browsers, social media apps
+- communication: Email, Slack, Teams, Messages, video calls
+- creative: Design tools, photo editors, video editors, IDEs (when coding)
+- media: Video players, music apps with visualizers, streaming services
+- gaming: Games
+- other: File managers, system utilities, settings (unless just looking at wallpaper settings)
+
+## Scoring Guidelines
+- High (0.8-1.0): Clear focused activity, meaningful content visible, transition moment
+- Medium (0.5-0.7): Normal activity, some useful context in the window
+- Low (0.2-0.4): Static content, window visible but minimal activity
+- Very low (0.0-0.2): TRUE idle only - no windows, screensaver, lock screen
+
+## Description Guidelines
+- ONLY describe what's happening in the active application window
+- NEVER mention the desktop wallpaper in your description
+- Focus on: What app is open? What is the user doing in it?
+- Wrong: "NYC skyline visible with a Safari window"
+- Right: "Safari browser showing Google search results"
 
 Respond with valid JSON only."""
 

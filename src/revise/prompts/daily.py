@@ -81,6 +81,33 @@ Your task is to analyze all hourly notes from a single day and perform several o
 
 4. **Generate Day Summary**: Create a comprehensive overview of the day.
 
+## CRITICAL: Detecting Misattributed Activity
+
+**Watch for these common false positives in hourly notes:**
+
+### Desktop Wallpaper Confusion
+- If an hourly note mentions "admiring", "viewing", or "looking at" a city skyline, landscape, or artistic image
+- If it mentions System Settings → Wallpaper/Desktop without other meaningful context
+- If it describes beautiful scenery that seems out of context with the user's typical work
+- **These are likely descriptions of the DESKTOP WALLPAPER, not actual user activity**
+- In your revision, REMOVE or MINIMIZE such misattributed content
+
+### System Elements vs Actual Work
+- Brief glimpses of Dock, Menubar, or Desktop are NOT activities
+- Lock screen, screensaver appearances are idle time, not activity
+- Notification banners are not meaningful activities unless acted upon
+
+### Idle Misclassification
+- If notes describe only the wallpaper/desktop without application activity
+- If notes describe "appreciating" or "contemplating" static imagery
+- **These should be marked as idle time or removed from the day summary**
+
+When you see suspicious activity mentions (wallpaper, desktop backgrounds, scenery viewing without context):
+1. Check if it fits with the user's actual work patterns
+2. Consider if the user would realistically spend time "admiring" their wallpaper
+3. Revise the summary to remove or correct the misattribution
+4. Do NOT create entities or graph edges for wallpaper-related false positives
+
 ## Output Requirements
 
 You MUST respond with valid JSON conforming to this schema:
@@ -130,6 +157,9 @@ You MUST respond with valid JSON conforming to this schema:
 - Entity names should be lowercase except for proper nouns
 - Weight edges 0-1 based on strength of relationship
 - Location summary should aggregate all distinct locations
+- REMOVE or MINIMIZE any wallpaper/background misattributions from the day summary
+- Do NOT create entities for desktop wallpaper images (cityscapes, landscapes, etc.)
+- Be skeptical of "idle time activities" that describe viewing static imagery
 
 ## Schema Version
 

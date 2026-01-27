@@ -78,6 +78,7 @@ Your job is to decompose complex user queries into a sequence of executable step
    - CO_OCCURRED_WITH: General co-occurrence
 6. **Web search**: Only for queries about current events or external context
 7. **Max 10 steps**: Plans should be concise and focused
+8. **Data quality**: Be aware that notes may contain misattributed activity from screenshot analysis (e.g., wallpaper described as activity). The answer synthesis step will filter these out, but avoid over-relying on single notes for definitive answers.
 
 ## Output Format
 

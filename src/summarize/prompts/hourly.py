@@ -272,6 +272,68 @@ Set requires_enrichment=true when additional context would be valuable:
 - Use exact timestamps from the evidence when available
 - Location should be geographic if known, null otherwise
 
+## CRITICAL: Understanding What You're Seeing
+
+**You are analyzing screenshots of a user's computer. You must understand the difference between:**
+
+1. **Active Content**: The window/application the user is actually interacting with
+2. **Passive Background**: Desktop wallpaper, dock, menubar, unfocused windows
+
+### Desktop Wallpaper - NEVER Treat as Activity
+
+**The desktop wallpaper is NEVER user activity.** It is simply the user's chosen background image. Common wallpaper subjects include:
+- City skylines (NYC, Tokyo, SF, etc.)
+- Nature scenes (mountains, beaches, forests)
+- Abstract art or gradients
+- Space/astronomy images
+- Anime/game characters
+- Personal photos
+
+**CRITICAL RULES for wallpaper:**
+- If you see a beautiful cityscape, landscape, or artistic image in the background → That's the WALLPAPER, not something the user is looking at
+- The user chose this wallpaper days/weeks/months ago - it has NOTHING to do with current activity
+- NEVER mention wallpaper in the summary unless the user is actively IN System Settings → Wallpaper picker
+- NEVER say "user was viewing NYC skyline" or "user admiring scenery" when it's just their desktop background
+- If the dominant visual is wallpaper with small app windows → Focus ONLY on the app windows
+
+### System Settings/Preferences - Be Skeptical
+
+**Brief visits to System Settings are NOT "configuring the system":**
+- Users open System Settings for quick checks (battery, WiFi, volume, display brightness)
+- A 30-second visit to check something ≠ "spent time configuring macOS"
+- Only describe as "configuration work" if you see:
+  - Multiple settings panels visited
+  - Actual changes being made (toggles switching, values changing)
+  - Extended time (10+ minutes) with visible interaction
+
+### Focus on ACTIVE Windows
+
+When analyzing screenshots:
+1. Identify which window is in the FOREGROUND (has focus, is being interacted with)
+2. Ignore background elements unless they're relevant to understanding the foreground task
+3. The foreground app is what the user is DOING - background apps are just open
+
+### Common Misinterpretations to AVOID
+
+| What You See | WRONG Interpretation | CORRECT Interpretation |
+|--------------|---------------------|------------------------|
+| NYC skyline behind Discord | "User viewing NYC imagery" | "User chatting in Discord" (ignore wallpaper) |
+| System Settings open for 2 min | "Configuring macOS settings" | Brief settings check, focus on other activities |
+| Finder window over beach wallpaper | "User browsing vacation photos" | "User managing files in Finder" |
+| Multiple windows, pretty background | Mention the background | Describe ONLY the active work |
+| IDE with code, mountain wallpaper | "User working with mountain imagery" | "User coding in [IDE]" |
+
+### User-Specific Considerations
+
+Different users use their computers differently:
+- **Developers**: May have multiple terminals, IDEs, documentation open
+- **Designers**: May have design tools, reference images, inspiration boards
+- **Writers**: May have word processors, research tabs, notes apps
+- **Students**: May have course materials, lecture videos, notes
+- **General users**: Mix of browsing, communication, entertainment
+
+**Adapt your interpretation based on visible context, not assumptions.**
+
 ## CRITICAL: Idle/AFK Detection
 
 **You MUST detect when the user was idle/AFK (Away From Keyboard) and NOT fabricate activities.**
@@ -304,6 +366,22 @@ If you detect idle patterns, you MUST:
 - **DO NOT** interpret a single long event (hours) as sustained focused work without other evidence
 - **DO NOT** fabricate activities from static screenshots showing no user interaction
 - **DO NOT** interpret System Settings/Preferences open for hours as "user configuring system" - this likely means the app was left open when user went AFK
+- **DO NOT** describe what's IN the wallpaper image (city, nature, etc.) as if the user is viewing/working with that content
+
+### Distinguishing Idle from Active with Wallpaper Visible
+
+**Truly Idle:**
+- Screenshots show ONLY desktop (no app windows) with wallpaper visible
+- Single app window unchanged for entire hour
+- No progression in visible content between screenshots
+
+**Active with Wallpaper Visible (NOT idle):**
+- App windows visible over wallpaper → Focus on the APP, ignore wallpaper
+- Multiple screenshots showing different app states → User is working
+- App switches detected → User is interacting with computer
+- When wallpaper is visible in background while user works in foreground apps → This is NORMAL, not idle
+
+**Key distinction:** If app windows are visible and changing, the user is ACTIVE regardless of what wallpaper is behind them.
 
 ### Example Idle Scenario:
 
