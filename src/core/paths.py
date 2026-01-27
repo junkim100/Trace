@@ -56,6 +56,9 @@ CACHE_DIR: Path = DATA_ROOT / "cache"
 # Database file path
 DB_PATH: Path = DB_DIR / "trace.sqlite"
 
+# Alias for backward compatibility (some modules still reference APP_SUPPORT_DIR)
+APP_SUPPORT_DIR: Path = DATA_ROOT
+
 # Cache subdirectories
 SCREENSHOTS_CACHE_DIR: Path = CACHE_DIR / "screenshots"
 TEXT_BUFFERS_CACHE_DIR: Path = CACHE_DIR / "text_buffers"
