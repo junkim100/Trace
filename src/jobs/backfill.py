@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 # Minimum number of screenshots/events to consider an hour "active"
 MIN_ACTIVITY_THRESHOLD = 5
 
+# Minimum screenshots (with files) required for backfill
+# Events alone are not sufficient - the summarizer needs images to analyze
+MIN_SCREENSHOTS_FOR_BACKFILL = 3
+
 # Maximum hours to backfill in a single run (to avoid overwhelming the API)
 MAX_BACKFILL_PER_RUN = 10
 
@@ -197,18 +201,36 @@ class BackfillDetector:
         return cursor.fetchone() is not None
 
     def _has_activity(self, cursor, hour_start: datetime, hour_end: datetime) -> bool:
-        """Check if there's meaningful activity in the given hour."""
-        # Check for screenshots
+        """
+        Check if there's meaningful activity in the given hour.
+
+        Only counts screenshots where the file actually exists on disk,
+        since screenshot files are cleaned up after daily revision.
+
+        Requires at least MIN_SCREENSHOTS_FOR_BACKFILL screenshots with files,
+        since the summarizer needs images to analyze. Events alone are not
+        sufficient for creating meaningful notes.
+        """
+        # Get screenshot paths and check if files exist
         cursor.execute(
             """
-            SELECT COUNT(*) FROM screenshots
+            SELECT path FROM screenshots
             WHERE ts >= ? AND ts < ?
             """,
             (hour_start.isoformat(), hour_end.isoformat()),
         )
-        screenshot_count = cursor.fetchone()[0]
+        screenshot_count = 0
+        for row in cursor.fetchall():
+            path = row[0]
+            if path and Path(path).exists():
+                screenshot_count += 1
 
-        # Check for events
+        # Must have at least some screenshots to create a meaningful note
+        # Events alone are not sufficient - the summarizer needs images
+        if screenshot_count < MIN_SCREENSHOTS_FOR_BACKFILL:
+            return False
+
+        # Check for events (these don't have files to verify)
         cursor.execute(
             """
             SELECT COUNT(*) FROM events
@@ -223,7 +245,7 @@ class BackfillDetector:
 
         if has_activity:
             logger.debug(
-                f"Hour {hour_start.isoformat()}: {screenshot_count} screenshots, "
+                f"Hour {hour_start.isoformat()}: {screenshot_count} screenshots (with files), "
                 f"{event_count} events"
             )
 
