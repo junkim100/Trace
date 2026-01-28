@@ -2,6 +2,44 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AllSettings, AppSettings, BlocklistEntry, InstalledApp } from '../types/trace-api';
 
+// Screenshot quality level helpers
+type QualityLevel = 'standard' | 'high' | 'ultra';
+
+function getQualityLevel(value: number): QualityLevel {
+  if (value <= 70) return 'standard';
+  if (value <= 90) return 'high';
+  return 'ultra';
+}
+
+function getQualityValue(level: string): number {
+  switch (level) {
+    case 'standard': return 70;
+    case 'high': return 85;
+    case 'ultra': return 95;
+    default: return 85;
+  }
+}
+
+// Deduplication sensitivity level helpers
+type DedupLevel = 'very_strict' | 'strict' | 'balanced' | 'relaxed';
+
+function getDedupLevel(value: number): DedupLevel {
+  if (value <= 2) return 'very_strict';
+  if (value <= 4) return 'strict';
+  if (value <= 7) return 'balanced';
+  return 'relaxed';
+}
+
+function getDedupValue(level: string): number {
+  switch (level) {
+    case 'very_strict': return 2;
+    case 'strict': return 4;
+    case 'balanced': return 6;
+    case 'relaxed': return 10;
+    default: return 6;
+  }
+}
+
 export function Settings() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<AllSettings | null>(null);
@@ -906,75 +944,48 @@ export function Settings() {
             </select>
           </div>
 
-          {/* Screenshot Quality with better explanation */}
+          {/* Screenshot Quality with intuitive labels */}
           <div style={styles.field}>
             <label style={styles.label}>Screenshot Quality</label>
             <p style={styles.description}>
-              JPEG compression quality. Higher values produce clearer screenshots but use more storage.
+              Choose the clarity of captured screenshots. Higher quality produces clearer text but uses more storage.
             </p>
-            <div style={styles.sliderContainer}>
-              <div style={styles.sliderLabels}>
-                <span style={styles.sliderLabelLeft}>Smaller files</span>
-                <span style={styles.sliderLabelRight}>Better quality</span>
-              </div>
-              <div style={styles.sliderRow}>
-                <input
-                  type="range"
-                  min="50"
-                  max="100"
-                  step="5"
-                  value={settings?.config.capture.jpeg_quality ?? 85}
-                  onChange={(e) => handleSettingChange('capture.jpeg_quality', Number(e.target.value))}
-                  style={styles.slider}
-                />
-                <span style={styles.sliderValue}>{settings?.config.capture.jpeg_quality ?? 85}%</span>
-              </div>
-              <div style={styles.sliderHint}>
-                {(settings?.config.capture.jpeg_quality ?? 85) <= 60
-                  ? '⚠️ Low quality - text may be hard to read'
-                  : (settings?.config.capture.jpeg_quality ?? 85) <= 75
-                  ? 'Good balance of quality and file size'
-                  : (settings?.config.capture.jpeg_quality ?? 85) <= 90
-                  ? '✓ Recommended - clear screenshots'
-                  : '✓ Maximum quality - larger files'}
-              </div>
-            </div>
+            <select
+              value={getQualityLevel(settings?.config.capture.jpeg_quality ?? 85)}
+              onChange={(e) => handleSettingChange('capture.jpeg_quality', getQualityValue(e.target.value))}
+              style={styles.select}
+            >
+              <option value="standard">Standard – Smaller files, good for general use</option>
+              <option value="high">High – Clear text, recommended for most users</option>
+              <option value="ultra">Ultra – Maximum clarity, larger files</option>
+            </select>
           </div>
 
-          {/* Deduplication Sensitivity with better explanation */}
+          {/* Deduplication Sensitivity with intuitive labels */}
           <div style={styles.field}>
-            <label style={styles.label}>Deduplication Sensitivity</label>
+            <label style={styles.label}>Change Detection</label>
             <p style={styles.description}>
-              Controls how similar two screenshots must be to skip the duplicate.
-              Lower values require more similarity (stricter), higher values allow more differences (looser).
+              How sensitive Trace is to screen changes. Stricter settings capture more subtle changes but use more storage.
             </p>
-            <div style={styles.sliderContainer}>
-              <div style={styles.sliderLabels}>
-                <span style={styles.sliderLabelLeft}>Stricter (keep more)</span>
-                <span style={styles.sliderLabelRight}>Looser (skip more)</span>
-              </div>
-              <div style={styles.sliderRow}>
-                <input
-                  type="range"
-                  min="1"
-                  max="15"
-                  step="1"
-                  value={settings?.config.capture.dedup_threshold ?? 5}
-                  onChange={(e) => handleSettingChange('capture.dedup_threshold', Number(e.target.value))}
-                  style={styles.slider}
-                />
-                <span style={styles.sliderValue}>{settings?.config.capture.dedup_threshold ?? 5}</span>
-              </div>
-              <div style={styles.sliderHint}>
-                {(settings?.config.capture.dedup_threshold ?? 5) <= 3
-                  ? 'Very strict - keeps most screenshots, uses more storage'
-                  : (settings?.config.capture.dedup_threshold ?? 5) <= 6
-                  ? '✓ Recommended - good balance'
-                  : (settings?.config.capture.dedup_threshold ?? 5) <= 10
-                  ? 'Moderate - skips similar content, saves storage'
-                  : '⚠️ Very loose - may skip important changes'}
-              </div>
-            </div>
+            <select
+              value={getDedupLevel(settings?.config.capture.dedup_threshold ?? 5)}
+              onChange={(e) => handleSettingChange('capture.dedup_threshold', getDedupValue(e.target.value))}
+              style={styles.select}
+            >
+              <option value="very_strict">Very Strict – Best for coding, terminals, and detailed work</option>
+              <option value="strict">Strict – Catches small text and UI changes</option>
+              <option value="balanced">Balanced – Good for most activities (recommended)</option>
+              <option value="relaxed">Relaxed – Saves storage, best for video/browsing</option>
+            </select>
+            <p style={{...styles.description, marginTop: '8px', fontSize: '12px', color: '#888'}}>
+              {getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'very_strict'
+                ? '💡 Ideal for developers, writers, and professionals where small text changes matter.'
+                : getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'strict'
+                ? '💡 Good for work that involves frequent small updates to documents or code.'
+                : getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'balanced'
+                ? '💡 Works well for mixed activities like browsing, reading, and light work.'
+                : '💡 Best when watching videos, browsing social media, or other visual content.'}
+            </p>
           </div>
         </section>
 
