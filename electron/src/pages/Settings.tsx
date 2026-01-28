@@ -6,6 +6,16 @@ export function Settings() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<AllSettings | null>(null);
   const [apiKey, setApiKey] = useState('');
+  const [tavilyApiKey, setTavilyApiKey] = useState('');
+  const [hasTavilyKey, setHasTavilyKey] = useState(false);
+  const [tavilyUsage, setTavilyUsage] = useState<{
+    count: number;
+    remaining: number;
+    limit: number;
+    percentage: number;
+    warning: boolean;
+    auto_disabled: boolean;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -115,6 +125,19 @@ export function Settings() {
     }
   };
 
+  const loadTavilyKeyStatus = async () => {
+    try {
+      const result = await window.traceAPI.settings.getTavilyApiKey();
+      setHasTavilyKey(result.has_api_key);
+
+      // Also load usage stats
+      const usage = await window.traceAPI.settings.getTavilyUsage();
+      setTavilyUsage(usage);
+    } catch (err) {
+      console.error('Failed to load Tavily key status:', err);
+    }
+  };
+
   const loadDataSummary = async () => {
     try {
       const result = await window.traceAPI.settings.getDataSummary();
@@ -210,6 +233,7 @@ export function Settings() {
     loadInstalledApps();
     loadMemorySummary();
     loadDataSummary();
+    loadTavilyKeyStatus();
 
     // Load app version
     window.traceAPI.getVersion().then(setAppVersion).catch(() => {});
@@ -290,6 +314,37 @@ export function Settings() {
       setSettings(result);
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to clear API key' });
+    }
+  };
+
+  const handleSaveTavilyKey = async () => {
+    if (!tavilyApiKey.trim()) return;
+
+    setSaving(true);
+    setMessage(null);
+    try {
+      await window.traceAPI.settings.setTavilyApiKey(tavilyApiKey.trim());
+      setMessage({ type: 'success', text: 'Tavily API key saved successfully. Web search is now enabled.' });
+      setTavilyApiKey('');
+      setHasTavilyKey(true);
+      // Load usage stats
+      const usage = await window.traceAPI.settings.getTavilyUsage();
+      setTavilyUsage(usage);
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save Tavily API key' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClearTavilyKey = async () => {
+    setMessage(null);
+    try {
+      await window.traceAPI.settings.setValue('tavily_api_key', null);
+      setMessage({ type: 'success', text: 'Tavily API key cleared. Web search is now disabled.' });
+      setHasTavilyKey(false);
+    } catch (err) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to clear Tavily API key' });
     }
   };
 
@@ -567,10 +622,79 @@ export function Settings() {
               >
                 Get a free key at tavily.com
               </a>
+              {' '}(1,000 free searches/month)
             </p>
+            {hasTavilyKey ? (
+              <div style={styles.tavilyConfigured}>
+                <div style={styles.keyConfigured}>
+                  <span style={styles.keyStatus}>✓ Web search enabled</span>
+                  <button
+                    onClick={handleClearTavilyKey}
+                    style={styles.clearButton}
+                  >
+                    Clear Key
+                  </button>
+                </div>
+                {tavilyUsage && (
+                  <div style={styles.usageStats}>
+                    <div style={styles.usageBar}>
+                      <div
+                        style={{
+                          ...styles.usageBarFill,
+                          width: `${Math.min(tavilyUsage.percentage, 100)}%`,
+                          backgroundColor: tavilyUsage.warning
+                            ? tavilyUsage.auto_disabled
+                              ? '#ff3b30'
+                              : '#ff9500'
+                            : 'var(--accent)',
+                        }}
+                      />
+                    </div>
+                    <div style={styles.usageText}>
+                      <span>
+                        {tavilyUsage.count} / {tavilyUsage.limit} searches this month
+                      </span>
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        {tavilyUsage.remaining} remaining
+                      </span>
+                    </div>
+                    {tavilyUsage.warning && (
+                      <p style={{
+                        ...styles.tavilyNote,
+                        color: tavilyUsage.auto_disabled ? '#ff3b30' : '#ff9500',
+                        marginTop: '0.5rem',
+                      }}>
+                        {tavilyUsage.auto_disabled
+                          ? '⚠️ Auto web search disabled (95% limit). Manual "search the web" still works.'
+                          : '⚠️ Approaching monthly limit (80%)'}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={styles.inputGroup}>
+                <input
+                  type="password"
+                  value={tavilyApiKey}
+                  onChange={(e) => setTavilyApiKey(e.target.value)}
+                  placeholder="tvly-..."
+                  style={styles.input}
+                />
+                <button
+                  onClick={handleSaveTavilyKey}
+                  disabled={!tavilyApiKey.trim() || saving}
+                  style={{
+                    ...styles.button,
+                    ...((!tavilyApiKey.trim() || saving) ? styles.buttonDisabled : {}),
+                  }}
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            )}
             <p style={styles.tavilyNote}>
-              Set the TAVILY_API_KEY environment variable to enable web search features.
-              Web search will automatically augment answers when asking about current events,
+              Web search augments answers when asking about current events,
               timelines, or follow-up questions on past activities.
             </p>
           </div>
@@ -1518,6 +1642,33 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '8px',
     marginTop: '0.5rem',
     lineHeight: 1.5,
+  },
+  tavilyConfigured: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.75rem',
+  },
+  usageStats: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.5rem',
+  },
+  usageBar: {
+    height: '8px',
+    backgroundColor: 'var(--border)',
+    borderRadius: '4px',
+    overflow: 'hidden',
+  },
+  usageBarFill: {
+    height: '100%',
+    borderRadius: '4px',
+    transition: 'width 0.3s ease, background-color 0.3s ease',
+  },
+  usageText: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '0.8rem',
+    color: 'var(--text-primary)',
   },
   status: {
     color: '#34c759',

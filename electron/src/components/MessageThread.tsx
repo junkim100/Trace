@@ -4,9 +4,10 @@ import type { ConversationMessage, MessageMetadata } from '../types/trace-api';
 
 interface MessageThreadProps {
   onCitationClick?: (noteId: string) => void;
+  onSuggestionClick?: (query: string) => void;
 }
 
-export function MessageThread({ onCitationClick }: MessageThreadProps) {
+export function MessageThread({ onCitationClick, onSuggestionClick }: MessageThreadProps) {
   const {
     messages,
     currentConversation,
@@ -61,9 +62,19 @@ export function MessageThread({ onCitationClick }: MessageThreadProps) {
           <div style={styles.suggestions}>
             <span style={styles.suggestionLabel}>Try asking:</span>
             <div style={styles.suggestionList}>
-              <span style={styles.suggestionItem}>What did I work on today?</span>
-              <span style={styles.suggestionItem}>What apps did I use most this week?</span>
-              <span style={styles.suggestionItem}>Tell me about my recent projects</span>
+              {[
+                "What did I work on today?",
+                "Summarize my activity this week",
+                "What topics have I been researching lately?",
+              ].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  style={styles.suggestionItem}
+                  onClick={() => onSuggestionClick?.(suggestion)}
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -169,9 +180,9 @@ function MessageBubble({ message, onCitationClick, isLast }: MessageBubbleProps)
                     key={idx}
                     onClick={() => onCitationClick?.(citation.note_id)}
                     style={styles.citationButton}
-                    title={citation.quote}
+                    title={`${citation.note_type} note`}
                   >
-                    {formatCitationLabel(citation.timestamp)}
+                    {citation.label || formatCitationLabel(citation.timestamp)}
                   </button>
                 ))}
               </div>
@@ -297,6 +308,10 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'rgba(0, 122, 255, 0.1)',
     padding: '0.5rem 0.75rem',
     borderRadius: '6px',
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s, transform 0.1s',
+    textAlign: 'left' as const,
   },
   loadMore: {
     textAlign: 'center',

@@ -41,11 +41,11 @@ class WebSearch(Action):
             return self._tavily_available
 
         try:
-            import os
-
             from tavily import TavilyClient
 
-            tavily_key = os.environ.get("TAVILY_API_KEY")
+            from src.core.config import get_tavily_api_key
+
+            tavily_key = get_tavily_api_key()
             if tavily_key:
                 self._tavily_client = TavilyClient(api_key=tavily_key)
                 self._tavily_available = True
@@ -70,6 +70,7 @@ class WebSearch(Action):
             search_depth: "basic" or "advanced" (default "basic")
             include_domains: Optional list of domains to include
             exclude_domains: Optional list of domains to exclude
+            skip_rate_limit: If True, skip rate limit check (for explicit user requests)
         """
         start_time = time.time()
         step_id = params.get("step_id", "web_search")
@@ -85,6 +86,28 @@ class WebSearch(Action):
                     execution_time_ms=(time.time() - start_time) * 1000,
                 )
 
+            # Check rate limit (unless explicitly skipped)
+            skip_rate_limit = params.get("skip_rate_limit", False)
+            if not skip_rate_limit:
+                from src.core.config import get_tavily_usage
+
+                usage = get_tavily_usage()
+                if usage["remaining"] <= 0:
+                    logger.warning("Web search rate limit reached")
+                    return StepResult(
+                        step_id=step_id,
+                        action=self.name,
+                        success=True,
+                        result={
+                            "web_results": [],
+                            "web_citations": [],
+                            "query": query,
+                            "message": "Monthly web search limit reached. Resets on the 1st.",
+                            "rate_limited": True,
+                        },
+                        execution_time_ms=(time.time() - start_time) * 1000,
+                    )
+
             max_results = params.get("max_results", 5)
             search_depth = params.get("search_depth", "basic")
 
@@ -97,6 +120,16 @@ class WebSearch(Action):
                     include_domains=params.get("include_domains"),
                     exclude_domains=params.get("exclude_domains"),
                 )
+
+                # Increment usage counter on successful search
+                if results:
+                    from src.core.config import increment_tavily_usage
+
+                    usage = increment_tavily_usage()
+                    logger.info(
+                        f"Tavily search completed. Usage: {usage['count']}/{usage['limit']} "
+                        f"({usage['percentage']}%)"
+                    )
             else:
                 # Fallback: Return a message that web search is not configured
                 logger.warning("Web search not available: TAVILY_API_KEY not set")

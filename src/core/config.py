@@ -78,6 +78,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "retention_months": None,  # None = keep forever
     },
     "api_key": None,
+    "tavily_api_key": None,  # v0.8.0: For web search augmentation
+    "tavily_usage": {  # v0.8.0: Rate limiting for web search
+        "count": 0,
+        "month": None,  # 1-12
+        "year": None,  # e.g., 2025
+    },
     "user_profile": {
         "name": "",
         "age": "",
@@ -290,6 +296,150 @@ def set_api_key(api_key: str) -> bool:
         os.environ["OPENAI_API_KEY"] = api_key
 
     return result
+
+
+def get_tavily_api_key() -> str | None:
+    """
+    Get the Tavily API key for web search.
+
+    Checks config first, then falls back to environment variable.
+
+    Returns:
+        API key string or None if not set
+    """
+    # First check config
+    api_key = get_config_value("tavily_api_key")
+    if api_key:
+        return api_key
+
+    # Fall back to environment variable
+    return os.environ.get("TAVILY_API_KEY")
+
+
+def set_tavily_api_key(api_key: str) -> bool:
+    """
+    Set the Tavily API key for web search.
+
+    Saves to config and also sets the environment variable for current session.
+
+    Args:
+        api_key: The API key to set
+
+    Returns:
+        True if saved successfully
+    """
+    # Validate format (Tavily keys start with 'tvly-')
+    if not api_key.startswith("tvly-"):
+        raise ValueError("Invalid Tavily API key format (should start with 'tvly-')")
+
+    # Save to config
+    result = set_config_value("tavily_api_key", api_key)
+
+    # Also set environment variable for current session
+    if result:
+        os.environ["TAVILY_API_KEY"] = api_key
+
+    return result
+
+
+# Tavily rate limiting constants
+TAVILY_MONTHLY_LIMIT = 1000
+TAVILY_WARNING_THRESHOLD = 0.80  # 80% = 800 searches
+TAVILY_AUTO_DISABLE_THRESHOLD = 0.95  # 95% = 950 searches
+
+
+def get_tavily_usage() -> dict:
+    """
+    Get current Tavily usage stats for the month.
+
+    Automatically resets counter if month has changed.
+
+    Returns:
+        Dict with count, month, year, limit, remaining, percentage, warning, auto_disabled
+    """
+    from datetime import datetime
+
+    now = datetime.now()
+    current_month = now.month
+    current_year = now.year
+
+    usage = get_config_value("tavily_usage", DEFAULT_CONFIG["tavily_usage"])
+
+    # Reset if month changed
+    if usage.get("month") != current_month or usage.get("year") != current_year:
+        usage = {"count": 0, "month": current_month, "year": current_year}
+        set_config_value("tavily_usage", usage)
+
+    count = usage.get("count", 0)
+    remaining = max(0, TAVILY_MONTHLY_LIMIT - count)
+    percentage = count / TAVILY_MONTHLY_LIMIT
+
+    return {
+        "count": count,
+        "month": current_month,
+        "year": current_year,
+        "limit": TAVILY_MONTHLY_LIMIT,
+        "remaining": remaining,
+        "percentage": round(percentage * 100, 1),
+        "warning": percentage >= TAVILY_WARNING_THRESHOLD,
+        "auto_disabled": percentage >= TAVILY_AUTO_DISABLE_THRESHOLD,
+    }
+
+
+def increment_tavily_usage() -> dict:
+    """
+    Increment the Tavily usage counter.
+
+    Should be called after each successful web search.
+
+    Returns:
+        Updated usage stats
+    """
+    from datetime import datetime
+
+    now = datetime.now()
+    current_month = now.month
+    current_year = now.year
+
+    usage = get_config_value("tavily_usage", DEFAULT_CONFIG["tavily_usage"])
+
+    # Reset if month changed
+    if usage.get("month") != current_month or usage.get("year") != current_year:
+        usage = {"count": 0, "month": current_month, "year": current_year}
+
+    # Increment
+    usage["count"] = usage.get("count", 0) + 1
+    usage["month"] = current_month
+    usage["year"] = current_year
+
+    set_config_value("tavily_usage", usage)
+
+    return get_tavily_usage()
+
+
+def can_use_tavily_auto() -> bool:
+    """
+    Check if Tavily auto-trigger is allowed (under 95% usage).
+
+    Returns:
+        True if auto-trigger should be enabled
+    """
+    usage = get_tavily_usage()
+    return not usage["auto_disabled"]
+
+
+def reset_tavily_usage() -> bool:
+    """
+    Reset Tavily usage counter (for testing or manual reset).
+
+    Returns:
+        True if reset successfully
+    """
+    from datetime import datetime
+
+    now = datetime.now()
+    usage = {"count": 0, "month": now.month, "year": now.year}
+    return set_config_value("tavily_usage", usage)
 
 
 def get_appearance_config() -> dict[str, Any]:

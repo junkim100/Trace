@@ -75,7 +75,8 @@ class ServiceManager:
     HEALTH_CHECK_INTERVAL = 60
 
     # Backfill check interval (only check every N health checks)
-    BACKFILL_CHECK_INTERVAL = 60  # Check every 60 health checks (~1 hour)
+    # Health checks run every 60 seconds, so 30 checks = 30 minutes
+    BACKFILL_CHECK_INTERVAL = 30  # Check every 30 health checks (~30 minutes)
 
     # Note recovery check interval (only check every N health checks)
     NOTE_RECOVERY_CHECK_INTERVAL = 60  # Check every 60 health checks (~1 hour)

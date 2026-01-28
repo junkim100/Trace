@@ -106,6 +106,13 @@ class QueryClassifier:
             r"\bhow\s+often\b",
         ],
         "web_augmented": [
+            # Explicit web search requests
+            r"\bsearch\s+(?:the\s+)?web\b",
+            r"\bweb\s+search\b",
+            r"\blook\s+(?:it\s+)?up\b.*\bonline\b",
+            r"\bsearch\s+online\b",
+            r"\bgoogle\b",
+            r"\bfind\s+(?:out|more)\b.*\bonline\b",
             # Explicit latest/current info requests
             r"\blatest\b",
             r"\bcurrent\b.*\b(?:news|events|developments|version|release)\b",
@@ -342,22 +349,40 @@ class QueryClassifier:
         """
         return self.classify(query).query_type
 
-    def should_augment_with_web(self, query: str, notes_age_days: int | None = None) -> bool:
+    def should_augment_with_web(
+        self, query: str, notes_age_days: int | None = None, check_rate_limit: bool = True
+    ) -> bool:
         """
         Check if a query would benefit from web search augmentation.
 
+        NOTE: As of v0.8.0, this method is deprecated in favor of the LLM-based
+        QueryRouter which uses proper tool calling for semantic web search decisions.
+        This method is kept for backwards compatibility and as a fast fallback.
+
+        For the new approach, see: src/chat/agentic/router.py
+
         This considers:
-        1. Explicit web augmentation patterns in the query
-        2. Age of the notes (older notes may benefit from updated context)
-        3. Types of entities mentioned (tech/software evolves quickly)
+        1. Rate limit status (auto-disabled at 95% usage)
+        2. Explicit web augmentation patterns in the query
+        3. Age of the notes (older notes may benefit from updated context)
+        4. Types of entities mentioned (tech/software evolves quickly)
 
         Args:
             query: The user's query string
             notes_age_days: Age of the oldest relevant note in days
+            check_rate_limit: Whether to check rate limit (default True)
 
         Returns:
             True if web search would likely improve the answer
         """
+        # Check rate limit first (unless explicitly skipped)
+        if check_rate_limit:
+            from src.core.config import can_use_tavily_auto
+
+            if not can_use_tavily_auto():
+                logger.debug("Web augmentation disabled: rate limit threshold reached")
+                return False
+
         # Check if query type is explicitly web_augmented
         classification = self.classify(query)
         if classification.query_type == "web_augmented":

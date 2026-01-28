@@ -20,10 +20,14 @@ from src.core.config import (
     get_data_config,
     get_notifications_config,
     get_shortcuts_config,
+    get_tavily_api_key,
+    get_tavily_usage,
     load_config,
+    reset_tavily_usage,
     save_config,
     set_api_key,
     set_config_value,
+    set_tavily_api_key,
     validate_config,
 )
 from src.core.paths import CACHE_DIR, DATA_ROOT, DB_PATH, NOTES_DIR
@@ -555,3 +559,73 @@ def handle_validate_api_key(params: dict[str, Any]) -> dict[str, Any]:
     except Exception as e:
         logger.exception("Failed to validate API key")
         return {"valid": False, "error": f"Validation failed: {str(e)}"}
+
+
+@handler("settings.set_tavily_api_key")
+def handle_set_tavily_api_key(params: dict[str, Any]) -> dict[str, Any]:
+    """Set the Tavily API key for web search.
+
+    Params:
+        api_key: The Tavily API key to set
+
+    Returns:
+        {"success": bool}
+    """
+    api_key = params.get("api_key")
+    if not api_key:
+        raise ValueError("api_key parameter is required")
+
+    if not isinstance(api_key, str):
+        raise ValueError("api_key must be a string")
+
+    api_key = api_key.strip()
+
+    try:
+        success = set_tavily_api_key(api_key)
+        return {"success": success}
+    except ValueError as e:
+        raise ValueError(str(e)) from e
+
+
+@handler("settings.get_tavily_api_key")
+def handle_get_tavily_api_key(params: dict[str, Any]) -> dict[str, Any]:
+    """Get the stored Tavily API key.
+
+    Returns:
+        {"api_key": str | None, "has_api_key": bool}
+    """
+    api_key = get_tavily_api_key()
+    return {
+        "api_key": api_key,
+        "has_api_key": bool(api_key),
+    }
+
+
+@handler("settings.get_tavily_usage")
+def handle_get_tavily_usage(params: dict[str, Any]) -> dict[str, Any]:
+    """Get Tavily web search usage stats.
+
+    Returns:
+        {
+            "count": int,
+            "month": int,
+            "year": int,
+            "limit": int,
+            "remaining": int,
+            "percentage": float,
+            "warning": bool,
+            "auto_disabled": bool
+        }
+    """
+    return get_tavily_usage()
+
+
+@handler("settings.reset_tavily_usage")
+def handle_reset_tavily_usage(params: dict[str, Any]) -> dict[str, Any]:
+    """Reset Tavily usage counter (for testing).
+
+    Returns:
+        {"success": bool}
+    """
+    success = reset_tavily_usage()
+    return {"success": success}

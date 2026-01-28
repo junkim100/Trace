@@ -79,9 +79,9 @@ export interface PermissionsAPI {
 /** Citation from a note */
 export interface Citation {
   note_id: string;
-  note_path: string;
-  quote: string;
+  note_type: string;
   timestamp: string;
+  label: string;
 }
 
 /** v0.8.0: Unified citation for both notes and web sources */
@@ -423,6 +423,27 @@ export interface SettingsAPI {
 
   /** Set API key */
   setApiKey(apiKey: string): Promise<{ success: boolean }>;
+
+  /** Get the stored Tavily API key (v0.8.0) */
+  getTavilyApiKey(): Promise<{ api_key: string | null; has_api_key: boolean }>;
+
+  /** Set Tavily API key (v0.8.0) */
+  setTavilyApiKey(apiKey: string): Promise<{ success: boolean }>;
+
+  /** Get Tavily usage stats (v0.8.0) */
+  getTavilyUsage(): Promise<{
+    count: number;
+    month: number;
+    year: number;
+    limit: number;
+    remaining: number;
+    percentage: number;
+    warning: boolean;
+    auto_disabled: boolean;
+  }>;
+
+  /** Reset Tavily usage counter (v0.8.0) */
+  resetTavilyUsage(): Promise<{ success: boolean }>;
 
   /** Validate API key against OpenAI API */
   validateApiKey(apiKey?: string): Promise<{ valid: boolean; error: string | null }>;

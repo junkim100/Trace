@@ -227,6 +227,22 @@ contextBridge.exposeInMainWorld('traceAPI', {
     setApiKey: (apiKey) =>
       ipcRenderer.invoke('python:call', 'settings.set_api_key', { api_key: apiKey }),
 
+    // Get Tavily API key (v0.8.0 - for web search)
+    getTavilyApiKey: () =>
+      ipcRenderer.invoke('python:call', 'settings.get_tavily_api_key', {}),
+
+    // Set Tavily API key (v0.8.0 - for web search)
+    setTavilyApiKey: (apiKey) =>
+      ipcRenderer.invoke('python:call', 'settings.set_tavily_api_key', { api_key: apiKey }),
+
+    // Get Tavily usage stats (v0.8.0 - rate limiting)
+    getTavilyUsage: () =>
+      ipcRenderer.invoke('python:call', 'settings.get_tavily_usage', {}),
+
+    // Reset Tavily usage counter (v0.8.0 - for testing)
+    resetTavilyUsage: () =>
+      ipcRenderer.invoke('python:call', 'settings.reset_tavily_usage', {}),
+
     // Validate API key (tests against OpenAI API)
     validateApiKey: (apiKey) =>
       ipcRenderer.invoke('python:call', 'settings.validate_api_key', { api_key: apiKey }),

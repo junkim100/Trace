@@ -278,6 +278,12 @@ def handle_send_message(params: dict[str, Any]) -> dict[str, Any]:
         "processing_time_ms": response.processing_time_ms,
     }
 
+    # v0.8.0: Include unified citations if present
+    if response.unified_citations:
+        metadata["unified_citations"] = [uc.to_dict() for uc in response.unified_citations]
+    if response.web_citations:
+        metadata["web_citations"] = response.web_citations
+
     # Save assistant message
     assistant_message = manager.add_message(
         conversation_id=conversation_id,

@@ -127,7 +127,7 @@ function ChatContent() {
         <div style={styles.chatContent}>
           {/* Message thread */}
           <div style={styles.messageArea}>
-            <MessageThread onCitationClick={setSelectedNoteId} />
+            <MessageThread onCitationClick={setSelectedNoteId} onSuggestionClick={handleQuery} />
           </div>
 
           {/* Error display */}

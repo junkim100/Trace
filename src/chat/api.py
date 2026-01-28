@@ -18,6 +18,7 @@ from typing import Literal
 from src.chat.agentic.classifier import QueryClassifier
 from src.chat.agentic.executor import ExecutionResult, PlanExecutor
 from src.chat.agentic.planner import QueryPlanner
+from src.chat.agentic.router import QueryRouter, RoutingDecision
 from src.chat.agentic.schemas import QueryPlan
 from src.chat.clarification import (
     ClarificationRequest,
@@ -153,6 +154,7 @@ class ChatAPI:
 
         # Initialize agentic components
         self._classifier = QueryClassifier()
+        self._router = QueryRouter(api_key=api_key)
         self._planner = QueryPlanner(api_key=api_key)
         self._executor = PlanExecutor(db_path=self.db_path, api_key=api_key)
 
@@ -210,11 +212,26 @@ class ChatAPI:
 
         # Check if query should use agentic pipeline
         if request.use_agentic:
-            classification = self._classifier.classify(query)
-            if classification.is_complex:
-                logger.info(f"Using agentic pipeline for {classification.query_type} query")
+            # Use LLM-based router for intelligent routing with tool calling
+            time_context = time_filter.description if time_filter else None
+            routing = self._router.route(query, time_context=time_context)
+
+            # Log routing decision
+            logger.info(
+                f"Router decision: type={routing.query_type}, "
+                f"web_search={routing.needs_web_search}, "
+                f"confidence={routing.confidence:.2f}"
+            )
+
+            # Use agentic pipeline for complex queries or web-augmented queries
+            if routing.query_type != "simple" or routing.needs_web_search:
                 return self._handle_agentic_query(
-                    request, query, time_filter, classification.query_type, start_time
+                    request,
+                    query,
+                    time_filter,
+                    routing.query_type,
+                    start_time,
+                    routing_decision=routing,
                 )
 
         # Detect query type for simple routing
@@ -253,6 +270,7 @@ class ChatAPI:
         time_filter: TimeFilter | None,
         query_type: str,
         start_time: float,
+        routing_decision: RoutingDecision | None = None,
     ) -> ChatResponse:
         """
         Handle a complex query using the agentic pipeline.
@@ -261,8 +279,9 @@ class ChatAPI:
             request: ChatRequest with user query
             query: The refined query (after clarification if any)
             time_filter: Parsed time filter
-            query_type: Detected query type from classifier
+            query_type: Detected query type from classifier/router
             start_time: Query start time for timing
+            routing_decision: Optional routing decision from LLM router
 
         Returns:
             ChatResponse with answer and supporting data
@@ -272,11 +291,31 @@ class ChatAPI:
         try:
             # Generate execution plan
             time_context = time_filter.description if time_filter else None
-            plan = self._planner.plan_for_type(
-                query=query,
-                query_type=query_type,
-                time_filter_description=time_context,
-            )
+
+            # If router decided web search is needed, use web_augmented plan
+            # and pass the optimized search query
+            if routing_decision and routing_decision.needs_web_search:
+                query_type = "web_augmented"
+                plan = self._planner.plan_for_type(
+                    query=query,
+                    query_type=query_type,
+                    time_filter_description=time_context,
+                )
+                # Update the web_search step with the optimized query from router
+                if routing_decision.web_search_query:
+                    for step in plan.steps:
+                        if step.action == "web_search":
+                            step.params["query"] = routing_decision.web_search_query
+                            logger.info(
+                                f"Using router's search query: {routing_decision.web_search_query}"
+                            )
+                            break
+            else:
+                plan = self._planner.plan_for_type(
+                    query=query,
+                    query_type=query_type,
+                    time_filter_description=time_context,
+                )
 
             logger.info(f"Generated plan with {len(plan.steps)} steps")
 

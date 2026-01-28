@@ -165,13 +165,24 @@ class BackfillDetector:
                 if hour_start >= current_hour:
                     continue
 
-                # Skip if already successfully processed (even if no note was created)
-                if hour_start.isoformat() in hours_already_processed:
-                    continue
-
-                # Check if note exists
+                # Check if note exists - this is the definitive check
                 if self._note_exists(cursor, hour_start):
                     continue
+
+                # If job was marked success but no note exists, check if there's
+                # activity on disk that wasn't available when the job ran
+                # (e.g., screenshots exist on disk but weren't in DB)
+                was_processed = hour_start.isoformat() in hours_already_processed
+                if was_processed:
+                    # Only reprocess if there are now screenshots on disk
+                    disk_count = self._count_screenshots_on_disk(hour_start)
+                    if disk_count < MIN_SCREENSHOTS_FOR_BACKFILL:
+                        # No new activity on disk, skip
+                        continue
+                    logger.info(
+                        f"Hour {hour_start.isoformat()} was processed but has no note. "
+                        f"Found {disk_count} screenshots on disk - will reprocess."
+                    )
 
                 # Check if there's enough activity
                 hour_end = hour_start + timedelta(hours=1)
@@ -204,14 +215,14 @@ class BackfillDetector:
         """
         Check if there's meaningful activity in the given hour.
 
-        Only counts screenshots where the file actually exists on disk,
-        since screenshot files are cleaned up after daily revision.
+        Checks both:
+        1. Screenshots in the database (with existing files)
+        2. Screenshot files on disk (for hours where DB sync may have failed)
 
         Requires at least MIN_SCREENSHOTS_FOR_BACKFILL screenshots with files,
-        since the summarizer needs images to analyze. Events alone are not
-        sufficient for creating meaningful notes.
+        since the summarizer needs images to analyze.
         """
-        # Get screenshot paths and check if files exist
+        # Get screenshot paths from database and check if files exist
         cursor.execute(
             """
             SELECT path FROM screenshots
@@ -225,8 +236,12 @@ class BackfillDetector:
             if path and Path(path).exists():
                 screenshot_count += 1
 
+        # If no screenshots in DB, check the filesystem directly
+        # This handles cases where capture saved files but DB insert failed
+        if screenshot_count == 0:
+            screenshot_count = self._count_screenshots_on_disk(hour_start)
+
         # Must have at least some screenshots to create a meaningful note
-        # Events alone are not sufficient - the summarizer needs images
         if screenshot_count < MIN_SCREENSHOTS_FOR_BACKFILL:
             return False
 
@@ -245,11 +260,36 @@ class BackfillDetector:
 
         if has_activity:
             logger.debug(
-                f"Hour {hour_start.isoformat()}: {screenshot_count} screenshots (with files), "
+                f"Hour {hour_start.isoformat()}: {screenshot_count} screenshots, "
                 f"{event_count} events"
             )
 
         return has_activity
+
+    def _count_screenshots_on_disk(self, hour_start: datetime) -> int:
+        """
+        Count screenshot files on disk for a given hour.
+
+        Used as fallback when screenshots aren't in the database.
+        """
+        from src.core.paths import CACHE_DIR
+
+        date_str = hour_start.strftime("%Y%m%d")
+        hour_str = hour_start.strftime("%H")
+
+        hour_dir = CACHE_DIR / "screenshots" / date_str / hour_str
+        if not hour_dir.exists():
+            return 0
+
+        count = 0
+        for f in hour_dir.iterdir():
+            if f.is_file() and f.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+                count += 1
+
+        if count > 0:
+            logger.debug(f"Found {count} screenshots on disk for {hour_start.isoformat()}")
+
+        return count
 
     def _record_backfill_job(self, hour_start: datetime, result: SummarizationResult) -> None:
         """
