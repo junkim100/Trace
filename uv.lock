@@ -1620,7 +1620,7 @@ wheels = [
 
 [[package]]
 name = "trace"
-version = "0.8.3"
+version = "0.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },

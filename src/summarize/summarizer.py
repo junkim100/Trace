@@ -198,60 +198,31 @@ class HourlySummarizer:
                 screenshots_count=evidence.total_screenshots,
             )
 
-        # Step 3b: Check if summary is empty/placeholder - skip note creation
-        empty_summary_indicators = [
-            "no summary available",
-            "no activity detected",
-            "no meaningful activity",
-            "no activity details were captured",
-            "no activity details captured",
-            "no details were captured",
-            "missing note",
-            "wasn't enough evidence",
-            "isn't enough evidence",
-            "no evidence to",
-        ]
-        summary_lower = summary.summary.lower().strip()
-        is_empty_summary = not summary.summary.strip() or any(
-            indicator in summary_lower for indicator in empty_summary_indicators
-        )
-
-        # Check if there's meaningful app usage - if so, create note even with empty summary
-        # This captures hours where user was active (e.g., terminal usage) but LLM couldn't
-        # extract rich content from screenshots. App usage data is still valuable.
-        total_app_time = sum(evidence.app_durations.values()) if evidence.app_durations else 0
-        has_meaningful_app_usage = total_app_time >= 600  # 10+ minutes of app usage
-
-        if is_empty_summary and not force and not has_meaningful_app_usage:
-            logger.info(
-                f"Empty/placeholder summary for {hour_start.isoformat()}, skipping note creation"
-            )
-            # CRITICAL: Do NOT delete screenshots here!
-            # Screenshots should only be deleted after a note is successfully saved.
-            # If we delete now, the data is lost forever with no way to recover or reprocess.
-            # The screenshots will be cleaned up by daily revision after the day is complete.
-            logger.warning(
-                f"Skipping hour {hour_start.isoformat()} due to empty summary - "
-                f"screenshots preserved for potential reprocessing"
-            )
-            return SummarizationResult(
-                success=True,
-                note_id=None,
-                file_path=None,
-                error=None,
-                events_count=evidence.total_events,
-                screenshots_count=evidence.total_screenshots,
-                keyframes_count=len(keyframes),
-                skipped_idle=True,
-                idle_reason="Empty or placeholder summary",
-            )
-        elif is_empty_summary and has_meaningful_app_usage:
-            logger.info(
-                f"Empty summary but {total_app_time // 60}m of app usage detected - "
-                f"creating note with app usage data"
-            )
-        elif is_empty_summary and force:
-            logger.info("Empty summary detected but force=True, creating note anyway")
+        # Step 3b: Use LLM to verify if note has meaningful content worth keeping
+        if not force:
+            quality_check = self._verify_note_quality(summary, evidence)
+            if not quality_check["should_keep"]:
+                logger.info(
+                    f"LLM determined note not worth keeping for {hour_start.isoformat()}: "
+                    f"{quality_check['reason']}"
+                )
+                # CRITICAL: Do NOT delete screenshots here!
+                # Screenshots should only be deleted after a note is successfully saved.
+                logger.warning(
+                    f"Skipping hour {hour_start.isoformat()} - "
+                    f"screenshots preserved for potential reprocessing"
+                )
+                return SummarizationResult(
+                    success=True,
+                    note_id=None,
+                    file_path=None,
+                    error=None,
+                    events_count=evidence.total_events,
+                    screenshots_count=evidence.total_screenshots,
+                    keyframes_count=len(keyframes),
+                    skipped_idle=True,
+                    idle_reason=quality_check["reason"],
+                )
 
         # Step 3d: Check if LLM detected idle/AFK - skip note creation if so
         # ONLY skip if LLM explicitly sets is_idle=true to avoid losing real activity
@@ -485,6 +456,83 @@ class HourlySummarizer:
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             return None
+
+    def _verify_note_quality(
+        self,
+        summary: HourlySummarySchema,
+        evidence: HourlyEvidence,
+    ) -> dict:
+        """
+        Use LLM to verify if the generated note has meaningful content worth keeping.
+
+        This is an additional verification step to prevent empty or low-quality notes
+        from being saved. The LLM evaluates the summary and decides if it represents
+        meaningful user activity.
+
+        Args:
+            summary: The generated summary to verify
+            evidence: The evidence that was used to generate the summary
+
+        Returns:
+            dict with 'should_keep' (bool) and 'reason' (str)
+        """
+        # First, check if summary is clearly empty
+        if not summary.summary or not summary.summary.strip():
+            return {"should_keep": False, "reason": "Empty summary text"}
+
+        # Check if there are any activities
+        if not summary.activities:
+            return {"should_keep": False, "reason": "No activities recorded"}
+
+        # Build verification prompt
+        verification_prompt = f"""You are evaluating whether a generated activity note should be kept or discarded.
+
+The note should be KEPT if it contains:
+- Meaningful user activity (work, learning, communication, etc.)
+- Specific details about what the user was doing
+- Information that would be useful to recall later
+
+The note should be DISCARDED if:
+- It only contains generic/placeholder text with no specific content
+- It describes idle time, sleep mode, or screen savers
+- It says there was no meaningful activity or insufficient evidence
+- The activities are trivial (just showing lock screen, idle desktop, etc.)
+
+Here is the generated summary:
+"{summary.summary}"
+
+Activities recorded:
+{chr(10).join(f"- {a.description} ({a.app})" for a in summary.activities[:5])}
+
+Number of screenshots analyzed: {evidence.total_screenshots}
+Number of events tracked: {evidence.total_events}
+
+Respond with ONLY a JSON object:
+{{"should_keep": true/false, "reason": "brief explanation"}}"""
+
+        try:
+            client = self._get_client()
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",  # Use fast model for verification
+                messages=[{"role": "user", "content": verification_prompt}],
+                max_tokens=100,
+                response_format={"type": "json_object"},
+            )
+
+            result_text = response.choices[0].message.content or "{}"
+            result = json.loads(result_text)
+
+            should_keep = result.get("should_keep", True)
+            reason = result.get("reason", "LLM verification")
+
+            logger.debug(f"Note quality verification: keep={should_keep}, reason={reason}")
+
+            return {"should_keep": should_keep, "reason": reason}
+
+        except Exception as e:
+            logger.warning(f"Note quality verification failed, defaulting to keep: {e}")
+            # Default to keeping the note if verification fails
+            return {"should_keep": True, "reason": "Verification failed, keeping by default"}
 
     def _generate_empty_note(
         self,
