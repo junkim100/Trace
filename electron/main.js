@@ -1246,6 +1246,33 @@ async function updateTrayMenu() {
         }
       },
     },
+    { type: 'separator' },
+    {
+      label: 'Run Backfill',
+      sublabel: 'Process missing notes',
+      click: async () => {
+        if (!pythonReady) {
+          showNotification('Backfill', 'Backend not ready. Please wait.');
+          return;
+        }
+        try {
+          showNotification('Backfill', 'Starting backfill for missing notes...');
+          const result = await callPython('services.trigger_backfill', { notify: true });
+          if (result.success) {
+            const msg = result.hours_backfilled > 0
+              ? `Backfilled ${result.hours_backfilled} hours`
+              : 'No missing notes to backfill';
+            showNotification('Backfill Complete', msg);
+          } else {
+            showNotification('Backfill Failed', result.error || 'Unknown error');
+          }
+        } catch (err) {
+          console.error('Backfill failed:', err);
+          showNotification('Backfill Failed', err.message || 'Unknown error');
+        }
+      },
+    },
+    { type: 'separator' },
     {
       label: 'Quit Trace',
       accelerator: 'CommandOrControl+Q',

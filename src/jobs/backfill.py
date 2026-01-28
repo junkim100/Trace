@@ -291,6 +291,224 @@ class BackfillDetector:
 
         return count
 
+    def _register_orphaned_screenshots(self, hour_start: datetime) -> int:
+        """
+        Register screenshot files from disk that aren't in the database.
+
+        This handles cases where screenshots were captured but not registered
+        in the database (e.g., database was reset/recreated).
+
+        Args:
+            hour_start: Start of the hour to scan
+
+        Returns:
+            Number of screenshots registered
+        """
+        import uuid
+
+        from src.core.paths import CACHE_DIR
+
+        date_str = hour_start.strftime("%Y%m%d")
+        hour_str = hour_start.strftime("%H")
+
+        hour_dir = CACHE_DIR / "screenshots" / date_str / hour_str
+        if not hour_dir.exists():
+            return 0
+
+        # Get existing screenshot paths from database
+        conn = get_connection(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT path FROM screenshots
+                WHERE ts >= ? AND ts < ?
+                """,
+                (
+                    hour_start.isoformat(),
+                    (hour_start + timedelta(hours=1)).isoformat(),
+                ),
+            )
+            existing_paths = {row[0] for row in cursor.fetchall()}
+
+            registered = 0
+            for f in sorted(hour_dir.iterdir()):
+                if not f.is_file() or f.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+                    continue
+
+                # Skip if already in database
+                if str(f) in existing_paths:
+                    continue
+
+                # Parse filename: 141537694_m2_1e6fc8ca.jpg
+                # Format: HHMMSSMMM_mN_fingerprint.ext
+                try:
+                    parts = f.stem.split("_")
+                    if len(parts) < 3:
+                        continue
+
+                    time_part = parts[0]  # e.g., "141537694"
+                    monitor_part = parts[1]  # e.g., "m2"
+                    fingerprint = parts[2]  # e.g., "1e6fc8ca"
+
+                    # Parse time: HHMMSSMMM -> HH:MM:SS.MMM
+                    if len(time_part) >= 9:
+                        hh = int(time_part[0:2])
+                        mm = int(time_part[2:4])
+                        ss = int(time_part[4:6])
+                        ms = int(time_part[6:9])
+
+                        ts = hour_start.replace(
+                            hour=hh, minute=mm, second=ss, microsecond=ms * 1000
+                        )
+                    else:
+                        # Fallback: use file modification time
+                        ts = datetime.fromtimestamp(f.stat().st_mtime)
+
+                    # Parse monitor ID: "m2" -> 2
+                    monitor_id = int(monitor_part[1:]) if monitor_part.startswith("m") else 1
+
+                    # Insert into database
+                    screenshot_id = str(uuid.uuid4())
+                    cursor.execute(
+                        """
+                        INSERT INTO screenshots
+                        (screenshot_id, ts, monitor_id, path, fingerprint, diff_score, created_ts)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            screenshot_id,
+                            ts.isoformat(),
+                            monitor_id,
+                            str(f),
+                            fingerprint,
+                            0.5,  # Default diff score
+                            datetime.now().isoformat(),
+                        ),
+                    )
+                    registered += 1
+
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"Could not parse screenshot filename {f.name}: {e}")
+                    continue
+
+            conn.commit()
+
+            if registered > 0:
+                logger.info(
+                    f"Registered {registered} orphaned screenshots for {hour_start.isoformat()}"
+                )
+
+            return registered
+
+        except Exception as e:
+            logger.error(f"Error registering orphaned screenshots: {e}")
+            conn.rollback()
+            return 0
+        finally:
+            conn.close()
+
+    def _reindex_orphaned_notes(self) -> int:
+        """
+        Reindex note files from disk that aren't in the database.
+
+        This handles cases where notes were manually added to the notes directory
+        or the database was reset/recreated.
+
+        Returns:
+            Number of notes reindexed
+        """
+        try:
+            from src.jobs.note_reindex import NoteReindexer
+
+            reindexer = NoteReindexer()
+            note_files = reindexer.find_note_files()
+
+            conn = get_connection(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM notes")
+            db_count = cursor.fetchone()["count"]
+            conn.close()
+
+            if len(note_files) > db_count:
+                logger.info(
+                    f"Detected orphaned notes: {len(note_files)} on disk, {db_count} in database. "
+                    "Running reindex..."
+                )
+                result = reindexer.reindex_all()
+                logger.info(f"Reindex complete: {result.notes_indexed} notes indexed")
+
+                # Compute embeddings for notes that don't have them
+                from src.core.config import get_api_key
+
+                api_key = get_api_key()
+                if api_key:
+                    self._compute_missing_embeddings(api_key)
+
+                return result.notes_indexed
+
+            return 0
+
+        except Exception as e:
+            logger.warning(f"Note reindex check failed: {e}")
+            return 0
+
+    def _compute_missing_embeddings(self, api_key: str) -> int:
+        """
+        Compute embeddings for notes that don't have them.
+
+        Args:
+            api_key: OpenAI API key
+
+        Returns:
+            Number of embeddings computed
+        """
+        import json as json_module
+
+        from src.summarize.embeddings import EmbeddingComputer
+        from src.summarize.schemas import HourlySummarySchema
+
+        computer = EmbeddingComputer(api_key=api_key)
+        conn = get_connection(self.db_path)
+        cursor = conn.cursor()
+
+        # Get notes without embeddings
+        cursor.execute(
+            "SELECT note_id, json_payload, start_ts FROM notes WHERE embedding_id IS NULL"
+        )
+        notes = cursor.fetchall()
+        conn.close()
+
+        if not notes:
+            return 0
+
+        logger.info(f"Computing embeddings for {len(notes)} notes...")
+        computed = 0
+
+        for note in notes:
+            try:
+                note_id = note["note_id"]
+                payload = json_module.loads(note["json_payload"]) if note["json_payload"] else {}
+                start_ts = datetime.fromisoformat(note["start_ts"])
+
+                # Create a minimal summary object
+                summary = HourlySummarySchema(
+                    summary=payload.get("summary", ""),
+                    categories=payload.get("categories", []),
+                    activities=[],
+                    learning=[],
+                    entities=[],
+                )
+
+                result = computer.compute_for_note(note_id, summary, start_ts)
+                if result.success:
+                    computed += 1
+            except Exception as e:
+                logger.warning(f"Failed to compute embedding for {note_id}: {e}")
+
+        logger.info(f"Computed {computed} embeddings")
+        return computed
+
     def _record_backfill_job(self, hour_start: datetime, result: SummarizationResult) -> None:
         """
         Record a backfill job in the jobs table.
@@ -425,6 +643,14 @@ class BackfillDetector:
             logger.info(f"Backfilling note for {hour.isoformat()}")
 
             try:
+                # First, register any orphaned screenshots from disk that aren't in the database
+                # This handles cases where screenshots were captured but DB insert failed
+                registered = self._register_orphaned_screenshots(hour)
+                if registered > 0:
+                    logger.info(
+                        f"Registered {registered} orphaned screenshots for {hour.isoformat()}"
+                    )
+
                 result = summarizer.summarize_hour(hour, force=False)
                 results.append(result)
 
@@ -488,12 +714,18 @@ class BackfillDetector:
         """
         Convenience method to find and backfill missing hours.
 
+        Also reindexes any orphaned notes (notes on disk but not in database).
+        This handles manually added notes and database resets.
+
         Args:
             notify: Whether to send macOS notifications
 
         Returns:
             BackfillResult with statistics
         """
+        # First, reindex any orphaned notes from disk
+        self._reindex_orphaned_notes()
+
         missing = self.find_missing_hours()
         if missing:
             return self.trigger_backfill(missing, notify=notify)
