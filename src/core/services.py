@@ -251,12 +251,13 @@ class ServiceManager:
 
         return False
 
-    def trigger_backfill(self, notify: bool = True) -> BackfillResult:
+    def trigger_backfill(self, notify: bool = True, force: bool = False) -> BackfillResult:
         """
         Manually trigger backfill check and execution.
 
         Args:
             notify: Whether to send notifications
+            force: If True, reprocess all hours ignoring job status and LLM checks
 
         Returns:
             BackfillResult with statistics
@@ -267,7 +268,7 @@ class ServiceManager:
                 api_key=self.api_key,
             )
 
-        return self._backfill_detector.check_and_backfill(notify=notify)
+        return self._backfill_detector.check_and_backfill(notify=notify, force=force)
 
     def trigger_note_recovery(self, notify: bool = True) -> RecoveryResult:
         """

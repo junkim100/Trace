@@ -74,7 +74,7 @@ class BackfillDetector:
             self._summarizer = HourlySummarizer(db_path=self.db_path, api_key=self.api_key)
         return self._summarizer
 
-    def find_missing_hours(self) -> list[datetime]:
+    def find_missing_hours(self, ignore_job_status: bool = False) -> list[datetime]:
         """
         Find ALL hours with activity but no notes.
 
@@ -85,6 +85,10 @@ class BackfillDetector:
 
         Also checks the jobs table to skip hours that were already processed
         (even if no note was created because the hour was skipped).
+
+        Args:
+            ignore_job_status: If True, don't skip hours that were marked as processed.
+                              Used for force reprocessing.
 
         Returns:
             List of hour start times that need backfilling (oldest first)
@@ -133,15 +137,17 @@ class BackfillDetector:
 
             # Find hours that have been successfully processed (even if no note created)
             # This prevents the backfill loop where skipped hours are retried repeatedly
-            cursor.execute(
-                """
-                SELECT window_start_ts
-                FROM jobs
-                WHERE job_type = 'hourly'
-                AND status = 'success'
-                """
-            )
-            hours_already_processed = {row[0] for row in cursor.fetchall()}
+            hours_already_processed: set[str] = set()
+            if not ignore_job_status:
+                cursor.execute(
+                    """
+                    SELECT window_start_ts
+                    FROM jobs
+                    WHERE job_type = 'hourly'
+                    AND status = 'success'
+                    """
+                )
+                hours_already_processed = {row[0] for row in cursor.fetchall()}
 
             # Combine all sources of activity hours
             all_activity_hours = hours_with_screenshots | hours_with_events | hours_with_dirs
@@ -152,6 +158,7 @@ class BackfillDetector:
                 f"db_events: {len(hours_with_events)}, "
                 f"disk_dirs: {len(hours_with_dirs)}), "
                 f"{len(hours_already_processed)} already processed"
+                + (", ignoring job status" if ignore_job_status else "")
             )
 
             # Check each hour for missing notes
@@ -166,23 +173,26 @@ class BackfillDetector:
                     continue
 
                 # Check if note exists - this is the definitive check
+                # In force mode, we still skip hours that already have notes
                 if self._note_exists(cursor, hour_start):
                     continue
 
                 # If job was marked success but no note exists, check if there's
                 # activity on disk that wasn't available when the job ran
                 # (e.g., screenshots exist on disk but weren't in DB)
-                was_processed = hour_start.isoformat() in hours_already_processed
-                if was_processed:
-                    # Only reprocess if there are now screenshots on disk
-                    disk_count = self._count_screenshots_on_disk(hour_start)
-                    if disk_count < MIN_SCREENSHOTS_FOR_BACKFILL:
-                        # No new activity on disk, skip
-                        continue
-                    logger.info(
-                        f"Hour {hour_start.isoformat()} was processed but has no note. "
-                        f"Found {disk_count} screenshots on disk - will reprocess."
-                    )
+                # Skip this check in force mode (ignore_job_status=True)
+                if not ignore_job_status:
+                    was_processed = hour_start.isoformat() in hours_already_processed
+                    if was_processed:
+                        # Only reprocess if there are now screenshots on disk
+                        disk_count = self._count_screenshots_on_disk(hour_start)
+                        if disk_count < MIN_SCREENSHOTS_FOR_BACKFILL:
+                            # No new activity on disk, skip
+                            continue
+                        logger.info(
+                            f"Hour {hour_start.isoformat()} was processed but has no note. "
+                            f"Found {disk_count} screenshots on disk - will reprocess."
+                        )
 
                 # Check if there's enough activity
                 hour_end = hour_start + timedelta(hours=1)
@@ -593,6 +603,7 @@ class BackfillDetector:
         hours: list[datetime] | None = None,
         notify: bool = True,
         max_hours: int = MAX_BACKFILL_PER_RUN,
+        force: bool = False,
     ) -> BackfillResult:
         """
         Generate notes for missing hours.
@@ -601,6 +612,7 @@ class BackfillDetector:
             hours: List of hours to backfill (uses find_missing_hours if not provided)
             notify: Whether to send macOS notifications
             max_hours: Maximum hours to backfill in this run
+            force: If True, bypass LLM quality checks and idle detection
 
         Returns:
             BackfillResult with statistics
@@ -651,7 +663,7 @@ class BackfillDetector:
                         f"Registered {registered} orphaned screenshots for {hour.isoformat()}"
                     )
 
-                result = summarizer.summarize_hour(hour, force=False)
+                result = summarizer.summarize_hour(hour, force=force)
                 results.append(result)
 
                 # Record this hour as processed in the jobs table to prevent re-processing
@@ -710,7 +722,7 @@ class BackfillDetector:
             results=results,
         )
 
-    def check_and_backfill(self, notify: bool = True) -> BackfillResult:
+    def check_and_backfill(self, notify: bool = True, force: bool = False) -> BackfillResult:
         """
         Convenience method to find and backfill missing hours.
 
@@ -719,6 +731,7 @@ class BackfillDetector:
 
         Args:
             notify: Whether to send macOS notifications
+            force: If True, reprocess all hours with activity, ignoring job status
 
         Returns:
             BackfillResult with statistics
@@ -726,9 +739,14 @@ class BackfillDetector:
         # First, reindex any orphaned notes from disk
         self._reindex_orphaned_notes()
 
-        missing = self.find_missing_hours()
+        if force:
+            # Force mode: find ALL hours with activity (ignore job status)
+            missing = self.find_missing_hours(ignore_job_status=True)
+        else:
+            missing = self.find_missing_hours()
+
         if missing:
-            return self.trigger_backfill(missing, notify=notify)
+            return self.trigger_backfill(missing, notify=notify, force=force)
         return BackfillResult(
             hours_checked=0,
             hours_missing=0,

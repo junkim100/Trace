@@ -1249,28 +1249,58 @@ async function updateTrayMenu() {
     { type: 'separator' },
     {
       label: 'Run Backfill',
-      sublabel: 'Process missing notes',
-      click: async () => {
-        if (!pythonReady) {
-          showNotification('Backfill', 'Backend not ready. Please wait.');
-          return;
-        }
-        try {
-          showNotification('Backfill', 'Starting backfill for missing notes...');
-          const result = await callPython('services.trigger_backfill', { notify: true });
-          if (result.success) {
-            const msg = result.hours_backfilled > 0
-              ? `Backfilled ${result.hours_backfilled} hours`
-              : 'No missing notes to backfill';
-            showNotification('Backfill Complete', msg);
-          } else {
-            showNotification('Backfill Failed', result.error || 'Unknown error');
-          }
-        } catch (err) {
-          console.error('Backfill failed:', err);
-          showNotification('Backfill Failed', err.message || 'Unknown error');
-        }
-      },
+      submenu: [
+        {
+          label: 'Process Missing Notes',
+          click: async () => {
+            if (!pythonReady) {
+              showNotification('Backfill', 'Backend not ready. Please wait.');
+              return;
+            }
+            try {
+              showNotification('Backfill', 'Starting backfill for missing notes...');
+              // 5 minute timeout for backfill operations (LLM calls can be slow)
+              const result = await callPython('services.trigger_backfill', { notify: true }, 300000);
+              if (result.success) {
+                const msg = result.hours_backfilled > 0
+                  ? `Backfilled ${result.hours_backfilled} hours`
+                  : 'No missing notes to backfill';
+                showNotification('Backfill Complete', msg);
+              } else {
+                showNotification('Backfill Failed', result.error || 'Unknown error');
+              }
+            } catch (err) {
+              console.error('Backfill failed:', err);
+              showNotification('Backfill Failed', err.message || 'Unknown error');
+            }
+          },
+        },
+        {
+          label: 'Force Reprocess All',
+          click: async () => {
+            if (!pythonReady) {
+              showNotification('Backfill', 'Backend not ready. Please wait.');
+              return;
+            }
+            try {
+              showNotification('Backfill', 'Force reprocessing all hours...');
+              // 10 minute timeout for force reprocess (may process many hours)
+              const result = await callPython('services.trigger_backfill', { notify: true, force: true }, 600000);
+              if (result.success) {
+                const msg = result.hours_backfilled > 0
+                  ? `Reprocessed ${result.hours_backfilled} hours`
+                  : 'No hours to reprocess';
+                showNotification('Backfill Complete', msg);
+              } else {
+                showNotification('Backfill Failed', result.error || 'Unknown error');
+              }
+            } catch (err) {
+              console.error('Force backfill failed:', err);
+              showNotification('Backfill Failed', err.message || 'Unknown error');
+            }
+          },
+        },
+      ],
     },
     { type: 'separator' },
     {

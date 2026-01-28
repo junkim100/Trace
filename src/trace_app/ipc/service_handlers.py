@@ -77,6 +77,7 @@ def handle_trigger_backfill(params: dict[str, Any]) -> dict[str, Any]:
 
     Params:
         notify: Whether to send notifications (default: True)
+        force: If True, reprocess all hours ignoring job status and LLM checks (default: False)
     """
     if _get_service_manager() is None:
         return {
@@ -85,9 +86,10 @@ def handle_trigger_backfill(params: dict[str, Any]) -> dict[str, Any]:
         }
 
     notify = params.get("notify", True)
+    force = params.get("force", False)
 
     try:
-        result = _get_service_manager().trigger_backfill(notify=notify)
+        result = _get_service_manager().trigger_backfill(notify=notify, force=force)
 
         return {
             "success": True,
