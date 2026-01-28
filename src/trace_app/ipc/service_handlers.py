@@ -9,22 +9,32 @@ Provides handlers for:
 import logging
 from typing import Any
 
-from src.trace_app.ipc.server import _service_manager, handler
+from src.trace_app.ipc import server
+from src.trace_app.ipc.server import handler
 
 logger = logging.getLogger(__name__)
+
+
+def _get_service_manager():
+    """Get the service manager instance from the server module.
+
+    We access it through the module to get the current value,
+    not the value at import time.
+    """
+    return server._service_manager
 
 
 @handler("services.get_health")
 def handle_get_service_health(params: dict[str, Any]) -> dict[str, Any]:
     """Get health status of all services."""
-    if _service_manager is None:
+    if _get_service_manager() is None:
         return {
             "healthy": False,
             "error": "Service manager not initialized",
             "services": {},
         }
 
-    return _service_manager.get_health_status()
+    return _get_service_manager().get_health_status()
 
 
 @handler("services.restart")
@@ -34,7 +44,7 @@ def handle_restart_service(params: dict[str, Any]) -> dict[str, Any]:
     Params:
         service: Name of service to restart ('capture', 'hourly', 'daily')
     """
-    if _service_manager is None:
+    if _get_service_manager() is None:
         return {
             "success": False,
             "error": "Service manager not initialized",
@@ -53,7 +63,7 @@ def handle_restart_service(params: dict[str, Any]) -> dict[str, Any]:
             "error": f"Unknown service: {service_name}",
         }
 
-    success = _service_manager.restart_service(service_name)
+    success = _get_service_manager().restart_service(service_name)
 
     return {
         "success": success,
@@ -68,7 +78,7 @@ def handle_trigger_backfill(params: dict[str, Any]) -> dict[str, Any]:
     Params:
         notify: Whether to send notifications (default: True)
     """
-    if _service_manager is None:
+    if _get_service_manager() is None:
         return {
             "success": False,
             "error": "Service manager not initialized",
@@ -77,7 +87,7 @@ def handle_trigger_backfill(params: dict[str, Any]) -> dict[str, Any]:
     notify = params.get("notify", True)
 
     try:
-        result = _service_manager.trigger_backfill(notify=notify)
+        result = _get_service_manager().trigger_backfill(notify=notify)
 
         return {
             "success": True,
@@ -101,22 +111,23 @@ def handle_check_missing(params: dict[str, Any]) -> dict[str, Any]:
 
     Scans entire database for hours with activity but no notes.
     """
-    if _service_manager is None:
+    if _get_service_manager() is None:
         return {
             "success": False,
             "error": "Service manager not initialized",
         }
 
     try:
-        if _service_manager._backfill_detector is None:
+        sm = _get_service_manager()
+        if sm._backfill_detector is None:
             from src.jobs.backfill import BackfillDetector
 
-            _service_manager._backfill_detector = BackfillDetector(
-                db_path=_service_manager.db_path,
-                api_key=_service_manager.api_key,
+            sm._backfill_detector = BackfillDetector(
+                db_path=sm.db_path,
+                api_key=sm.api_key,
             )
 
-        missing = _service_manager._backfill_detector.find_missing_hours()
+        missing = sm._backfill_detector.find_missing_hours()
 
         return {
             "success": True,
@@ -139,14 +150,14 @@ def handle_check_missing_files(params: dict[str, Any]) -> dict[str, Any]:
     Scans database for notes where the file_path doesn't exist on disk
     but the json_payload is valid (can be recovered).
     """
-    if _service_manager is None:
+    if _get_service_manager() is None:
         return {
             "success": False,
             "error": "Service manager not initialized",
         }
 
     try:
-        missing = _service_manager.check_missing_note_files()
+        missing = _get_service_manager().check_missing_note_files()
 
         return {
             "success": True,
@@ -179,7 +190,7 @@ def handle_recover_notes(params: dict[str, Any]) -> dict[str, Any]:
     Params:
         notify: Whether to send notifications (default: True)
     """
-    if _service_manager is None:
+    if _get_service_manager() is None:
         return {
             "success": False,
             "error": "Service manager not initialized",
@@ -188,7 +199,7 @@ def handle_recover_notes(params: dict[str, Any]) -> dict[str, Any]:
     notify = params.get("notify", True)
 
     try:
-        result = _service_manager.trigger_note_recovery(notify=notify)
+        result = _get_service_manager().trigger_note_recovery(notify=notify)
 
         return {
             "success": True,
