@@ -226,6 +226,10 @@ def verify_schema(conn: sqlite3.Connection) -> dict:
         "aggregates",
         "embeddings",
         "deletion_log",
+        "blocklist",
+        "conversations",
+        "messages",
+        "conversation_context",
     ]
 
     cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
