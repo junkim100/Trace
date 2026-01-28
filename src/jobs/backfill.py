@@ -135,8 +135,10 @@ class BackfillDetector:
             except Exception as e:
                 logger.warning(f"Error scanning screenshot directories: {e}")
 
-            # Find hours that have been successfully processed (even if no note created)
-            # This prevents the backfill loop where skipped hours are retried repeatedly
+            # Find hours that have been successfully processed or intentionally skipped
+            # - "success": Note was created
+            # - "skipped": Hour was intentionally skipped (truly idle)
+            # - "failed": Should NOT be in this set - we want to retry failed hours
             hours_already_processed: set[str] = set()
             if not ignore_job_status:
                 cursor.execute(
@@ -144,7 +146,7 @@ class BackfillDetector:
                     SELECT window_start_ts
                     FROM jobs
                     WHERE job_type = 'hourly'
-                    AND status = 'success'
+                    AND status IN ('success', 'skipped')
                     """
                 )
                 hours_already_processed = {row[0] for row in cursor.fetchall()}
@@ -209,17 +211,57 @@ class BackfillDetector:
         return missing
 
     def _note_exists(self, cursor, hour_start: datetime) -> bool:
-        """Check if a note exists for the given hour."""
+        """
+        Check if a note exists for the given hour.
+
+        CRITICAL: Validates BOTH database record AND file existence.
+        If a DB record exists but the file is missing, the orphaned
+        DB record is deleted and False is returned.
+        """
         cursor.execute(
             """
-            SELECT 1 FROM notes
+            SELECT note_id, file_path FROM notes
             WHERE note_type = 'hour'
             AND start_ts = ?
             LIMIT 1
             """,
             (hour_start.isoformat(),),
         )
-        return cursor.fetchone() is not None
+        row = cursor.fetchone()
+
+        if row is None:
+            return False
+
+        # CRITICAL: Verify the file actually exists on disk
+        file_path = row["file_path"]
+        if file_path and Path(file_path).exists():
+            return True
+
+        # DB record exists but file is missing - this is an orphaned record
+        # Delete it so the hour can be reprocessed
+        note_id = row["note_id"]
+        logger.warning(
+            f"Found orphaned DB record for {hour_start.isoformat()}: "
+            f"note_id={note_id}, file_path={file_path} does not exist. "
+            "Cleaning up orphaned record."
+        )
+
+        # Clean up the orphaned record
+        cursor.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
+        cursor.execute("DELETE FROM note_entities WHERE note_id = ?", (note_id,))
+        cursor.execute(
+            "DELETE FROM embeddings WHERE source_type = 'note' AND source_id = ?",
+            (note_id,),
+        )
+        # Also clean up the job record so it can be reprocessed
+        cursor.execute(
+            "DELETE FROM jobs WHERE job_type = 'hourly' AND window_start_ts = ?",
+            (hour_start.isoformat(),),
+        )
+        cursor.connection.commit()
+
+        logger.info(f"Cleaned up orphaned record for {hour_start.isoformat()}")
+        return False
 
     def _has_activity(self, cursor, hour_start: datetime, hour_end: datetime) -> bool:
         """
@@ -470,6 +512,9 @@ class BackfillDetector:
         This handles cases where note files were manually deleted but
         the database records remain (stale references).
 
+        CRITICAL: Also cleans up corresponding job records so the hour
+        can be properly reprocessed by backfill.
+
         Returns:
             Number of orphaned records cleaned up
         """
@@ -479,29 +524,51 @@ class BackfillDetector:
         try:
             cursor = conn.cursor()
 
-            # Find notes in DB
-            cursor.execute("SELECT note_id, file_path FROM notes")
+            # Find notes in DB with their start times (needed to clean up jobs)
+            cursor.execute("SELECT note_id, file_path, start_ts FROM notes")
             notes = cursor.fetchall()
 
-            orphaned_ids = []
+            orphaned_notes = []
             for note in notes:
                 file_path = note["file_path"]
                 if file_path and not Path(file_path).exists():
-                    orphaned_ids.append(note["note_id"])
+                    orphaned_notes.append(
+                        {
+                            "note_id": note["note_id"],
+                            "file_path": file_path,
+                            "start_ts": note["start_ts"],
+                        }
+                    )
                     logger.info(f"Found orphaned DB record: {file_path}")
 
-            if orphaned_ids:
-                for note_id in orphaned_ids:
+            if orphaned_notes:
+                for orphan in orphaned_notes:
+                    note_id = orphan["note_id"]
+                    start_ts = orphan["start_ts"]
+
+                    # Delete the note and related records
                     cursor.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
                     cursor.execute("DELETE FROM note_entities WHERE note_id = ?", (note_id,))
                     cursor.execute(
                         "DELETE FROM embeddings WHERE source_type = 'note' AND source_id = ?",
                         (note_id,),
                     )
+
+                    # CRITICAL: Also delete the job record so the hour can be reprocessed
+                    # Without this, find_missing_hours() would skip this hour because
+                    # the job was marked as 'success'
+                    cursor.execute(
+                        "DELETE FROM jobs WHERE job_type = 'hourly' AND window_start_ts = ?",
+                        (start_ts,),
+                    )
+                    logger.debug(f"Also cleaned up job record for {start_ts}")
+
                     cleaned += 1
 
                 conn.commit()
-                logger.info(f"Cleaned up {cleaned} orphaned database records")
+                logger.info(
+                    f"Cleaned up {cleaned} orphaned database records (and their job records)"
+                )
 
         except Exception as e:
             logger.error(f"Error cleaning orphaned DB records: {e}")
@@ -571,21 +638,56 @@ class BackfillDetector:
         """
         Record a backfill job in the jobs table.
 
-        This prevents the same hour from being re-processed on future backfill runs,
-        even if no note was created (e.g., hour was skipped due to insufficient activity).
+        Job status meanings:
+        - "success": Note was created successfully
+        - "skipped": Hour was intentionally skipped (no activity, truly idle)
+        - "failed": Processing failed or content validation failed
+
+        CRITICAL: If result.success=True but note_id=None and idle_reason contains
+        "No meaningful content", this means the LLM returned empty/placeholder content.
+        We mark this as "failed" so the hour can be reprocessed with better settings.
         """
         import json
         import uuid
 
         hour_end = hour_start + timedelta(hours=1)
         job_id = str(uuid.uuid4())
-        status = "success" if result.success else "failed"
+
+        # Determine the appropriate status
+        # Note: DB constraint only allows: 'pending', 'running', 'success', 'failed'
+        if result.success and result.note_id:
+            # Note was actually created
+            status = "success"
+        elif result.success and result.skipped_idle:
+            # Check if this was a true idle skip or a content validation failure
+            idle_reason = result.idle_reason or ""
+            if (
+                "No meaningful content" in idle_reason
+                or "no summary available" in idle_reason.lower()
+            ):
+                # LLM returned empty content - mark as failed so we retry
+                status = "failed"
+                logger.info(
+                    f"Marking {hour_start.isoformat()} as failed (not success) "
+                    "because LLM returned empty content - will retry on next backfill"
+                )
+            else:
+                # True idle detection (user was AFK) - mark as success
+                # We use success because we don't want to retry truly idle hours
+                status = "success"
+        elif result.success:
+            # Success but no note and not skipped_idle - treat as success (no activity)
+            status = "success"
+        else:
+            status = "failed"
 
         result_json = json.dumps(
             {
                 "note_id": result.note_id,
                 "file_path": str(result.file_path) if result.file_path else None,
                 "backfill": True,
+                "skipped_idle": result.skipped_idle,
+                "idle_reason": result.idle_reason,
             }
         )
 
@@ -646,6 +748,61 @@ class BackfillDetector:
         finally:
             conn.close()
 
+    def _register_all_orphaned_screenshots(self) -> int:
+        """
+        Pre-scan and register ALL orphaned screenshots across all hours.
+
+        This runs BEFORE find_missing_hours() to ensure screenshots are in the
+        database before we check for activity. Without this, hours with
+        screenshots on disk but not in DB might be incorrectly skipped.
+
+        Returns:
+            Total number of screenshots registered
+        """
+        from src.core.paths import CACHE_DIR
+
+        total_registered = 0
+        screenshots_dir = CACHE_DIR / "screenshots"
+
+        if not screenshots_dir.exists():
+            return 0
+
+        try:
+            # Iterate through all date directories (YYYYMMDD)
+            for date_dir in sorted(screenshots_dir.iterdir()):
+                if not date_dir.is_dir() or len(date_dir.name) != 8:
+                    continue
+
+                # Iterate through all hour directories (HH)
+                for hour_dir in sorted(date_dir.iterdir()):
+                    if not hour_dir.is_dir() or len(hour_dir.name) != 2:
+                        continue
+
+                    try:
+                        # Parse the hour
+                        date_str = date_dir.name  # YYYYMMDD
+                        hour_str = hour_dir.name  # HH
+                        hour_start = datetime.strptime(
+                            f"{date_str}T{hour_str}:00:00", "%Y%m%dT%H:%M:%S"
+                        )
+
+                        # Register orphaned screenshots for this hour
+                        registered = self._register_orphaned_screenshots(hour_start)
+                        total_registered += registered
+
+                    except ValueError:
+                        continue
+
+            if total_registered > 0:
+                logger.info(
+                    f"Pre-registered {total_registered} orphaned screenshots across all hours"
+                )
+
+        except Exception as e:
+            logger.warning(f"Error pre-registering orphaned screenshots: {e}")
+
+        return total_registered
+
     def trigger_backfill(
         self,
         hours: list[datetime] | None = None,
@@ -666,7 +823,10 @@ class BackfillDetector:
             BackfillResult with statistics
         """
         if hours is None:
-            hours = self.find_missing_hours()
+            # CRITICAL: Register orphaned screenshots BEFORE finding missing hours
+            # This ensures screenshots on disk are in the DB before we check activity
+            self._register_all_orphaned_screenshots()
+            hours = self.find_missing_hours(ignore_job_status=force)
 
         if not hours:
             logger.info("No hours to backfill")
@@ -772,11 +932,20 @@ class BackfillDetector:
 
     def check_and_backfill(self, notify: bool = True, force: bool = False) -> BackfillResult:
         """
-        Convenience method to find and backfill missing hours.
+        Comprehensive sync and backfill operation.
 
-        Also syncs filesystem with database:
-        - Reindexes orphaned notes (notes on disk but not in database)
-        - Cleans up orphaned DB records (records in DB but files deleted)
+        This is the main entry point for startup and periodic backfill checks.
+        It performs a complete bidirectional sync to ensure:
+        1. All screenshots on disk are registered in DB
+        2. All notes on disk are indexed in DB
+        3. All orphaned DB records (files deleted) are cleaned up
+        4. Missing hours with activity are detected and backfilled
+
+        CRITICAL: The order of operations matters:
+        1. Register orphaned screenshots (so activity detection works)
+        2. Reindex orphaned notes (so we don't re-create existing notes)
+        3. Cleanup orphaned DB records (so hours with deleted notes get reprocessed)
+        4. Find and backfill missing hours
 
         Args:
             notify: Whether to send macOS notifications
@@ -785,10 +954,27 @@ class BackfillDetector:
         Returns:
             BackfillResult with statistics
         """
-        # First, sync filesystem with database
-        self._reindex_orphaned_notes()
-        self._cleanup_orphaned_db_records()
+        logger.info("Starting comprehensive sync and backfill check...")
 
+        # Step 1: Register orphaned screenshots from disk into DB
+        # This ensures _has_activity() correctly counts screenshots
+        registered_screenshots = self._register_all_orphaned_screenshots()
+        if registered_screenshots > 0:
+            logger.info(f"Registered {registered_screenshots} orphaned screenshots")
+
+        # Step 2: Reindex notes on disk that aren't in the database
+        # This prevents re-creating notes that exist as files
+        reindexed = self._reindex_orphaned_notes()
+        if reindexed > 0:
+            logger.info(f"Reindexed {reindexed} orphaned notes from disk")
+
+        # Step 3: Cleanup DB records for deleted note files
+        # This ensures hours with deleted notes get detected as missing
+        cleaned = self._cleanup_orphaned_db_records()
+        if cleaned > 0:
+            logger.info(f"Cleaned up {cleaned} orphaned DB records")
+
+        # Step 4: Find and backfill missing hours
         if force:
             # Force mode: find ALL hours with activity (ignore job status)
             missing = self.find_missing_hours(ignore_job_status=True)
@@ -796,7 +982,10 @@ class BackfillDetector:
             missing = self.find_missing_hours()
 
         if missing:
+            logger.info(f"Found {len(missing)} hours to backfill")
             return self.trigger_backfill(missing, notify=notify, force=force)
+
+        logger.info("Sync complete, no hours to backfill")
         return BackfillResult(
             hours_checked=0,
             hours_missing=0,

@@ -600,6 +600,7 @@ def build_vision_messages(
     evidence: HourlyEvidence,
     keyframes: list[SelectedKeyframe],
     aggregator: EvidenceAggregator | None = None,
+    image_detail: str = "auto",
 ) -> list[dict]:
     """
     Build messages with vision content for the LLM.
@@ -608,6 +609,10 @@ def build_vision_messages(
         evidence: Aggregated evidence for the hour
         keyframes: Selected keyframes (must include screenshot paths)
         aggregator: Optional aggregator for building timeline text
+        image_detail: Image detail level - "auto", "low", or "high"
+            - "low": 512x512 thumbnails (fast, cheap, but may miss text)
+            - "auto": Model chooses appropriate detail (recommended)
+            - "high": Full resolution (best quality, higher cost)
 
     Returns:
         List of message dicts for the OpenAI API
@@ -642,7 +647,7 @@ def build_vision_messages(
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:image/jpeg;base64,{image_data}",
-                            "detail": "low",  # Use low for cost efficiency
+                            "detail": image_detail,
                         },
                     }
                 )

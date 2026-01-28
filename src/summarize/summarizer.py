@@ -183,9 +183,9 @@ class HourlySummarizer:
         logger.debug("Selecting keyframes...")
         keyframes = self._select_keyframes(hour_start, hour_end, evidence)
 
-        # Step 3: Call LLM for summarization
+        # Step 3: Call LLM for summarization (with automatic retry on empty content)
         logger.debug("Calling LLM for summarization...")
-        summary = self._call_llm(evidence, keyframes)
+        summary = self._call_llm_with_retry(evidence, keyframes)
 
         if summary is None:
             logger.error("LLM summarization failed")
@@ -446,11 +446,24 @@ class HourlySummarizer:
         self,
         evidence: HourlyEvidence,
         keyframes: list[SelectedKeyframe],
+        image_detail: str = "auto",
     ) -> HourlySummarySchema | None:
-        """Call the LLM for summarization."""
+        """
+        Call the LLM for summarization.
+
+        Args:
+            evidence: Aggregated evidence for the hour
+            keyframes: Selected keyframes with screenshots
+            image_detail: Image detail level - "auto", "low", or "high"
+
+        Returns:
+            HourlySummarySchema or None if failed
+        """
         try:
-            # Build messages
-            messages = build_vision_messages(evidence, keyframes, self.aggregator)
+            # Build messages with specified detail level
+            messages = build_vision_messages(
+                evidence, keyframes, self.aggregator, image_detail=image_detail
+            )
 
             client = self._get_client()
             response = client.chat.completions.create(
@@ -467,7 +480,6 @@ class HourlySummarizer:
 
             if not result.valid:
                 logger.error(f"LLM response validation failed: {result.error}")
-                # Try one more time with stricter prompt
                 return None
 
             return result.data
@@ -476,30 +488,104 @@ class HourlySummarizer:
             logger.error(f"LLM call failed: {e}")
             return None
 
+    def _call_llm_with_retry(
+        self,
+        evidence: HourlyEvidence,
+        keyframes: list[SelectedKeyframe],
+    ) -> HourlySummarySchema | None:
+        """
+        Call LLM with automatic retry using higher image detail if first attempt
+        returns empty/placeholder content.
+
+        This handles cases where the LLM needs more image detail to properly
+        analyze the screenshots and extract meaningful activity information.
+
+        Returns:
+            HourlySummarySchema or None if all attempts failed
+        """
+        # First attempt with "auto" detail
+        logger.debug("LLM call attempt 1 with image_detail='auto'")
+        summary = self._call_llm(evidence, keyframes, image_detail="auto")
+
+        if summary is None:
+            return None
+
+        # Check if we got meaningful content
+        if self._has_meaningful_content(summary):
+            return summary
+
+        # Check if the summary is a known placeholder that indicates the LLM
+        # couldn't properly analyze the images
+        summary_lower = (summary.summary or "").lower()
+        needs_retry = (
+            "no summary available" in summary_lower
+            or "no activity detected" in summary_lower
+            or "insufficient evidence" in summary_lower
+            or len(summary.activities) == 0
+        )
+
+        if needs_retry and evidence.total_screenshots > 0:
+            logger.warning(
+                f"LLM returned empty content with {evidence.total_screenshots} screenshots. "
+                "Retrying with image_detail='high' for better analysis..."
+            )
+
+            # Retry with high detail - this gives the LLM full resolution images
+            # to better read text and understand the screen content
+            summary_retry = self._call_llm(evidence, keyframes, image_detail="high")
+
+            if summary_retry is not None and self._has_meaningful_content(summary_retry):
+                logger.info("Retry with high detail succeeded!")
+                return summary_retry
+
+            logger.warning("Retry with high detail also returned empty content")
+
+        # Return the original summary (even if empty) for proper handling upstream
+        return summary
+
     def _has_meaningful_content(self, summary: HourlySummarySchema) -> bool:
         """
         Check if the summary has meaningful content worth saving.
 
-        This is a failsafe check that catches obviously empty notes that
-        slipped through other verification. It does NOT use LLM - just
-        simple heuristics to detect placeholder/empty content.
+        This is a CRITICAL failsafe check that catches empty/placeholder notes
+        that slipped through LLM verification. Uses strict heuristics to ensure
+        we never save useless notes.
+
+        IMPORTANT: This runs even when force=True to prevent saving garbage.
 
         Returns:
             True if note has meaningful content, False if it should be skipped
         """
-        # Empty indicators - these phrases indicate the LLM couldn't generate real content
+        # Expanded list of empty indicators - these phrases indicate placeholder content
         empty_indicators = [
             "no summary available",
             "no activity detected",
             "no meaningful activity",
             "no activity details",
             "no details were captured",
+            "no details captured",
             "insufficient evidence",
             "no evidence available",
+            "no evidence to",
             "unable to generate",
             "could not generate",
             "nothing to summarize",
             "no notable activity",
+            "missing note",
+            "wasn't enough evidence",
+            "isn't enough evidence",
+            "not enough information",
+            "not enough data",
+            "no data available",
+            "placeholder",
+            "n/a",
+            "none available",
+            "activity unknown",
+            "unknown activity",
+            "no specific activity",
+            "general computer use",  # Too vague
+            "various tasks",  # Too vague
+            "miscellaneous",  # Too vague
         ]
 
         # Check summary text for empty indicators
@@ -514,6 +600,7 @@ class HourlySummarizer:
             return False
 
         # Check if summary is too short (less than 50 chars is suspicious)
+        # Real activity summaries should have meaningful descriptions
         if len(summary.summary.strip()) < 50:
             logger.info(f"Summary too short: {len(summary.summary.strip())} chars")
             return False
@@ -528,19 +615,35 @@ class HourlySummarizer:
             "idle",
             "lock screen",
             "screen saver",
+            "screensaver",
             "sleep",
             "no activity",
             "system idle",
+            "away",
+            "afk",
+            "inactive",
+            "standby",
+            "login screen",
+            "desktop",  # Just showing desktop
+            "finder",  # Just Finder with no specific task
+            "blank screen",
+            "waiting",
         ]
         real_activities = 0
         for activity in summary.activities:
             desc_lower = activity.description.lower() if activity.description else ""
+
+            # Check if description is trivial
             is_trivial = any(t in desc_lower for t in trivial_activities)
-            if not is_trivial and len(desc_lower) > 10:
+
+            # Also check if it's just a generic app mention with no real description
+            is_vague = len(desc_lower) < 15 or desc_lower in trivial_activities
+
+            if not is_trivial and not is_vague:
                 real_activities += 1
 
         if real_activities == 0:
-            logger.info("All activities are trivial or too short")
+            logger.info(f"All {len(summary.activities)} activities are trivial or too short/vague")
             return False
 
         # Check categories - empty categories usually mean empty note
@@ -548,6 +651,21 @@ class HourlySummarizer:
             logger.info("No categories in summary")
             return False
 
+        # Additional check: at least one activity must have a meaningful app
+        has_real_app = False
+        for activity in summary.activities:
+            if activity.app and activity.app.lower() not in ["unknown", "n/a", "", "none"]:
+                has_real_app = True
+                break
+
+        if not has_real_app:
+            logger.info("No activities have a real app name")
+            return False
+
+        logger.debug(
+            f"Content validation passed: {len(summary.activities)} activities, "
+            f"{real_activities} non-trivial, {len(summary.categories)} categories"
+        )
         return True
 
     def _verify_note_quality(
