@@ -40,8 +40,20 @@ function getDedupValue(level: string): number {
   }
 }
 
+// Tab definitions
+type SettingsTab = 'general' | 'capture' | 'ai' | 'privacy' | 'advanced';
+
+const TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: 'general', label: 'General', icon: '⚙️' },
+  { id: 'capture', label: 'Capture', icon: '📷' },
+  { id: 'ai', label: 'AI & APIs', icon: '🤖' },
+  { id: 'privacy', label: 'Privacy', icon: '🔒' },
+  { id: 'advanced', label: 'Advanced', icon: '🔧' },
+];
+
 export function Settings() {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [settings, setSettings] = useState<AllSettings | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [tavilyApiKey, setTavilyApiKey] = useState('');
@@ -554,1001 +566,1046 @@ export function Settings() {
     return (
       <div style={styles.container}>
         <div className="titlebar" style={styles.titlebar} />
-        <main style={styles.main}>
+        <div style={styles.loadingContainer}>
           <div style={styles.loading}>Loading settings...</div>
-        </main>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div style={styles.container}>
-      <div className="titlebar" style={styles.titlebar} />
-      <main style={styles.main}>
-        <div style={styles.header}>
-          <button onClick={() => navigate(-1)} style={styles.backButton}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 12H5" />
-              <path d="M12 19l-7-7 7-7" />
-            </svg>
-            Back
-          </button>
-          <h1 style={styles.title}>Settings</h1>
-        </div>
-
-        {message && (
-          <div style={{
-            ...styles.message,
-            ...(message.type === 'success' ? styles.messageSuccess : styles.messageError),
-          }}>
-            {message.text}
-          </div>
-        )}
-
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>API Configuration</h2>
-          <div style={styles.field}>
-            <label style={styles.label}>OpenAI API Key</label>
-            <p style={styles.description}>
-              Required for generating summaries and answering queries.
-            </p>
-
-            {/* Status indicator */}
-            <div style={styles.apiKeyStatus}>
-              {settings?.has_api_key ? (
-                <>
-                  <span style={styles.apiKeyStatusSet}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M20 6L9 17l-5-5" />
-                    </svg>
-                    API key is set
-                  </span>
-                  <button
-                    onClick={handleClearApiKey}
-                    style={styles.clearButton}
-                    type="button"
-                  >
-                    Clear
-                  </button>
-                </>
-              ) : (
-                <span style={styles.apiKeyStatusNotSet}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
-                  No API key set
-                </span>
-              )}
-            </div>
-
-            {/* Input for new key */}
-            <div style={styles.inputRow}>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Enter new API key (sk-...)"
-                style={styles.input}
-              />
-              <button
-                onClick={handleSaveApiKey}
-                disabled={!apiKey.trim() || saving}
-                style={{
-                  ...styles.saveButton,
-                  ...(!apiKey.trim() || saving ? styles.saveButtonDisabled : {}),
-                }}
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-
-          {/* Tavily API Key for Web Search (v0.8.0) */}
-          <div style={styles.field}>
-            <label style={styles.label}>Tavily API Key (Web Search)</label>
-            <p style={styles.description}>
-              Optional. Enables web search to augment chat answers with current information.{' '}
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  window.traceAPI?.shell?.openExternal('https://tavily.com');
-                }}
-                style={{ color: 'var(--accent)' }}
-              >
-                Get a free key at tavily.com
-              </a>
-              {' '}(1,000 free searches/month)
-            </p>
-            {hasTavilyKey ? (
-              <div style={styles.tavilyConfigured}>
-                <div style={styles.keyConfigured}>
-                  <span style={styles.keyStatus}>✓ Web search enabled</span>
-                  <button
-                    onClick={handleClearTavilyKey}
-                    style={styles.clearButton}
-                  >
-                    Clear Key
-                  </button>
+  // Render tab content based on active tab
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'general':
+        return (
+          <>
+            {/* Appearance */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Appearance</h2>
+              <div style={styles.field}>
+                <div style={styles.toggleRow}>
+                  <div>
+                    <label style={styles.label}>Show in Dock</label>
+                    <p style={styles.description}>When off, Trace only appears in the menu bar.</p>
+                  </div>
+                  <label className="settings-switch" style={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={settings?.config.appearance.show_in_dock ?? false}
+                      onChange={(e) => handleSettingChange('appearance.show_in_dock', e.target.checked)}
+                    />
+                    <span style={styles.switchSlider}></span>
+                  </label>
                 </div>
-                {tavilyUsage && (
-                  <div style={styles.usageStats}>
-                    <div style={styles.usageBar}>
-                      <div
-                        style={{
-                          ...styles.usageBarFill,
-                          width: `${Math.min(tavilyUsage.percentage, 100)}%`,
-                          backgroundColor: tavilyUsage.warning
-                            ? tavilyUsage.auto_disabled
-                              ? '#ff3b30'
-                              : '#ff9500'
-                            : 'var(--accent)',
-                        }}
+              </div>
+              <div style={styles.field}>
+                <div style={styles.toggleRow}>
+                  <div>
+                    <label style={styles.label}>Launch at Login</label>
+                    <p style={styles.description}>Start Trace automatically when you log in.</p>
+                  </div>
+                  <label className="settings-switch" style={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={settings?.config.appearance.launch_at_login ?? true}
+                      onChange={(e) => handleSettingChange('appearance.launch_at_login', e.target.checked)}
+                    />
+                    <span style={styles.switchSlider}></span>
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            {/* Notifications */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Notifications</h2>
+              <div style={styles.field}>
+                <div style={styles.toggleRow}>
+                  <div>
+                    <label style={styles.label}>Weekly Digest</label>
+                    <p style={styles.description}>Receive a weekly summary notification.</p>
+                  </div>
+                  <label className="settings-switch" style={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={settings?.config.notifications.weekly_digest_enabled ?? true}
+                      onChange={(e) => handleSettingChange('notifications.weekly_digest_enabled', e.target.checked)}
+                    />
+                    <span style={styles.switchSlider}></span>
+                  </label>
+                </div>
+              </div>
+              {settings?.config.notifications.weekly_digest_enabled && (
+                <div style={styles.field}>
+                  <label style={styles.label}>Digest Day</label>
+                  <p style={styles.description}>Day of the week to send the weekly digest.</p>
+                  <select
+                    value={settings?.config.notifications.weekly_digest_day ?? 'sunday'}
+                    onChange={(e) => handleSettingChange('notifications.weekly_digest_day', e.target.value)}
+                    style={styles.select}
+                  >
+                    {settings?.options.weekly_digest_days.map((day) => (
+                      <option key={day} value={day}>
+                        {day.charAt(0).toUpperCase() + day.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </section>
+
+            {/* Keyboard Shortcuts */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Keyboard Shortcuts</h2>
+              <div style={styles.field}>
+                <div style={styles.toggleRow}>
+                  <div>
+                    <label style={styles.label}>Enable Global Shortcuts</label>
+                    <p style={styles.description}>Allow Trace to respond to keyboard shortcuts even when not focused.</p>
+                  </div>
+                  <label className="settings-switch" style={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={shortcutsEnabled}
+                      onChange={async (e) => {
+                        const enabled = e.target.checked;
+                        setShortcutsEnabled(enabled);
+                        await window.traceAPI.shortcuts.setEnabled(enabled);
+                        await handleSettingChange('shortcuts.enabled', enabled);
+                      }}
+                    />
+                    <span style={styles.switchSlider}></span>
+                  </label>
+                </div>
+              </div>
+              <div style={{ ...styles.field, opacity: shortcutsEnabled ? 1 : 0.5 }}>
+                <label style={styles.label}>Open Trace</label>
+                <p style={styles.description}>Global shortcut to show/hide the Trace window.</p>
+                <div style={styles.shortcutDisplay}>
+                  {settings?.config.shortcuts.open_trace?.replace('CommandOrControl', '⌘').replace('+', ' + ') ?? '⌘ + Shift + T'}
+                </div>
+              </div>
+              <div style={{ ...styles.field, opacity: shortcutsEnabled ? 1 : 0.5 }}>
+                <label style={styles.label}>Quick Capture</label>
+                <p style={styles.description}>Global shortcut to open Trace and focus the chat input.</p>
+                <div style={styles.shortcutDisplay}>⌘ + Shift + N</div>
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Open Settings</label>
+                <p style={styles.description}>Open settings from anywhere in the app.</p>
+                <div style={styles.shortcutDisplay}>⌘ + ,</div>
+              </div>
+            </section>
+          </>
+        );
+
+      case 'capture':
+        return (
+          <>
+            {/* Power Saving */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Power Saving</h2>
+              <div style={styles.field}>
+                <label style={styles.label}>Power Saving Mode</label>
+                <p style={styles.description}>
+                  Reduce capture frequency to conserve battery. Normal capture: every 1 second.
+                </p>
+                <select
+                  value={settings?.config.capture.power_saving_mode ?? 'automatic'}
+                  onChange={(e) => handleSettingChange('capture.power_saving_mode', e.target.value)}
+                  style={styles.select}
+                >
+                  <option value="off">Off - Always capture at normal speed</option>
+                  <option value="automatic">Automatic - Activate when battery is low</option>
+                  <option value="always_on">Always On - Always reduce capture on battery</option>
+                </select>
+
+                {settings?.config.capture.power_saving_mode === 'automatic' && (
+                  <div style={styles.powerSavingOptions}>
+                    <label style={styles.subLabel}>Activate when battery is below:</label>
+                    <div style={styles.sliderRow}>
+                      <input
+                        type="range"
+                        min="10"
+                        max="50"
+                        step="5"
+                        value={settings?.config.capture.power_saving_threshold ?? 20}
+                        onChange={(e) => handleSettingChange('capture.power_saving_threshold', Number(e.target.value))}
+                        style={styles.slider}
                       />
+                      <span style={styles.sliderValue}>{settings?.config.capture.power_saving_threshold ?? 20}%</span>
                     </div>
-                    <div style={styles.usageText}>
-                      <span>
-                        {tavilyUsage.count} / {tavilyUsage.limit} searches this month
-                      </span>
-                      <span style={{ color: 'var(--text-secondary)' }}>
-                        {tavilyUsage.remaining} remaining
-                      </span>
-                    </div>
-                    {tavilyUsage.warning && (
-                      <p style={{
-                        ...styles.tavilyNote,
-                        color: tavilyUsage.auto_disabled ? '#ff3b30' : '#ff9500',
-                        marginTop: '0.5rem',
-                      }}>
-                        {tavilyUsage.auto_disabled
-                          ? '⚠️ Auto web search disabled (95% limit). Manual "search the web" still works.'
-                          : '⚠️ Approaching monthly limit (80%)'}
-                      </p>
-                    )}
+                  </div>
+                )}
+
+                {settings?.config.capture.power_saving_mode !== 'off' && (
+                  <div style={styles.powerSavingOptions}>
+                    <label style={styles.subLabel}>Capture interval when power saving:</label>
+                    <select
+                      value={settings?.config.capture.power_saving_interval ?? 5}
+                      onChange={(e) => handleSettingChange('capture.power_saving_interval', Number(e.target.value))}
+                      style={{ ...styles.select, marginTop: '0.5rem' }}
+                    >
+                      <option value={3}>Every 3 seconds (mild saving)</option>
+                      <option value={5}>Every 5 seconds (recommended)</option>
+                      <option value={10}>Every 10 seconds (moderate saving)</option>
+                      <option value={30}>Every 30 seconds (aggressive saving)</option>
+                    </select>
                   </div>
                 )}
               </div>
-            ) : (
-              <div style={styles.inputGroup}>
-                <input
-                  type="password"
-                  value={tavilyApiKey}
-                  onChange={(e) => setTavilyApiKey(e.target.value)}
-                  placeholder="tvly-..."
-                  style={styles.input}
-                />
-                <button
-                  onClick={handleSaveTavilyKey}
-                  disabled={!tavilyApiKey.trim() || saving}
-                  style={{
-                    ...styles.button,
-                    ...((!tavilyApiKey.trim() || saving) ? styles.buttonDisabled : {}),
-                  }}
-                >
-                  {saving ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            )}
-            <p style={styles.tavilyNote}>
-              Web search augments answers when asking about current events,
-              timelines, or follow-up questions on past activities.
-            </p>
-          </div>
-        </section>
+            </section>
 
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Memory & Personalization</h2>
-          <p style={styles.description}>
-            Trace learns about you through conversations to personalize your experience.
-          </p>
-
-          {/* Memory summary */}
-          {memorySummary && (
-            <div style={styles.memorySummaryBox}>
-              <div style={styles.memorySummaryTitle}>What Trace knows about you:</div>
-              <div style={styles.memorySummaryContent}>
-                {memoryLoading ? 'Loading...' : memorySummary}
-              </div>
-            </div>
-          )}
-
-          {/* Memory action buttons */}
-          <div style={styles.memoryButtonsContainer}>
-            <button
-              onClick={() => navigate('/onboarding/profile', { state: { mode: 'update' } })}
-              style={styles.memoryButton}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
-              Update Memory
-            </button>
-            <button
-              onClick={() => setShowRestartConfirm(true)}
-              style={styles.memoryButtonSecondary}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M23 4v6h-6" />
-                <path d="M1 20v-6h6" />
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-              </svg>
-              Restart Onboarding
-            </button>
-          </div>
-
-          {/* Restart confirmation dialog */}
-          {showRestartConfirm && (
-            <div style={styles.confirmDialog}>
-              <div style={styles.confirmDialogContent}>
-                <p style={styles.confirmText}>
-                  This will clear all your memory data and start the onboarding process from scratch. Are you sure?
+            {/* Capture Settings */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Capture Settings</h2>
+              <div style={styles.field}>
+                <label style={styles.label}>Screenshot Quality</label>
+                <p style={styles.description}>
+                  Choose the clarity of captured screenshots. Higher quality produces clearer text but uses more storage.
                 </p>
-                <div style={styles.confirmButtons}>
-                  <button
-                    onClick={() => setShowRestartConfirm(false)}
-                    style={styles.confirmCancelButton}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowRestartConfirm(false);
-                      navigate('/onboarding/profile', { state: { mode: 'restart' } });
-                    }}
-                    style={styles.confirmDangerButton}
-                  >
-                    Yes, Restart
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Appearance</h2>
-          <div style={styles.field}>
-            <div style={styles.toggleRow}>
-              <div>
-                <label style={styles.label}>Show in Dock</label>
-                <p style={styles.description}>When off, Trace only appears in the menu bar.</p>
-              </div>
-              <label className="settings-switch" style={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={settings?.config.appearance.show_in_dock ?? false}
-                  onChange={(e) => handleSettingChange('appearance.show_in_dock', e.target.checked)}
-                />
-                <span style={styles.switchSlider}></span>
-              </label>
-            </div>
-          </div>
-          <div style={styles.field}>
-            <div style={styles.toggleRow}>
-              <div>
-                <label style={styles.label}>Launch at Login</label>
-                <p style={styles.description}>Start Trace automatically when you log in.</p>
-              </div>
-              <label className="settings-switch" style={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={settings?.config.appearance.launch_at_login ?? true}
-                  onChange={(e) => handleSettingChange('appearance.launch_at_login', e.target.checked)}
-                />
-                <span style={styles.switchSlider}></span>
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Capture & Processing</h2>
-
-          {/* Power Saving Mode */}
-          <div style={styles.field}>
-            <label style={styles.label}>Power Saving Mode</label>
-            <p style={styles.description}>
-              Reduce capture frequency to conserve battery. Normal capture: every 1 second.
-            </p>
-            <select
-              value={settings?.config.capture.power_saving_mode ?? 'automatic'}
-              onChange={(e) => handleSettingChange('capture.power_saving_mode', e.target.value)}
-              style={styles.select}
-            >
-              <option value="off">Off - Always capture at normal speed</option>
-              <option value="automatic">Automatic - Activate when battery is low</option>
-              <option value="always_on">Always On - Always reduce capture on battery</option>
-            </select>
-
-            {/* Battery threshold setting for automatic mode */}
-            {settings?.config.capture.power_saving_mode === 'automatic' && (
-              <div style={styles.powerSavingOptions}>
-                <label style={styles.subLabel}>Activate when battery is below:</label>
-                <div style={styles.sliderRow}>
-                  <input
-                    type="range"
-                    min="10"
-                    max="50"
-                    step="5"
-                    value={settings?.config.capture.power_saving_threshold ?? 20}
-                    onChange={(e) => handleSettingChange('capture.power_saving_threshold', Number(e.target.value))}
-                    style={styles.slider}
-                  />
-                  <span style={styles.sliderValue}>{settings?.config.capture.power_saving_threshold ?? 20}%</span>
-                </div>
-              </div>
-            )}
-
-            {/* Capture interval when power saving is active */}
-            {settings?.config.capture.power_saving_mode !== 'off' && (
-              <div style={styles.powerSavingOptions}>
-                <label style={styles.subLabel}>Capture interval when power saving:</label>
                 <select
-                  value={settings?.config.capture.power_saving_interval ?? 5}
-                  onChange={(e) => handleSettingChange('capture.power_saving_interval', Number(e.target.value))}
-                  style={{ ...styles.select, marginTop: '0.5rem' }}
+                  value={getQualityLevel(settings?.config.capture.jpeg_quality ?? 85)}
+                  onChange={(e) => handleSettingChange('capture.jpeg_quality', getQualityValue(e.target.value))}
+                  style={styles.select}
                 >
-                  <option value={3}>Every 3 seconds (mild saving)</option>
-                  <option value={5}>Every 5 seconds (recommended)</option>
-                  <option value={10}>Every 10 seconds (moderate saving)</option>
-                  <option value={30}>Every 30 seconds (aggressive saving)</option>
+                  <option value="standard">Standard – Smaller files, good for general use</option>
+                  <option value="high">High – Clear text, recommended for most users</option>
+                  <option value="ultra">Ultra – Maximum clarity, larger files</option>
                 </select>
               </div>
-            )}
 
-            {/* Info box showing current behavior */}
-            <div style={styles.infoBox}>
-              <span style={styles.infoIcon}>ℹ</span>
-              <span>
-                {settings?.config.capture.power_saving_mode === 'off'
-                  ? 'Captures every 1 second regardless of power source.'
-                  : settings?.config.capture.power_saving_mode === 'always_on'
-                  ? `On battery: captures every ${settings?.config.capture.power_saving_interval ?? 5}s. On power: every 1s.`
-                  : `On battery below ${settings?.config.capture.power_saving_threshold ?? 20}%: captures every ${settings?.config.capture.power_saving_interval ?? 5}s. Otherwise: every 1s.`}
-              </span>
-            </div>
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>Summarization Interval</label>
-            <p style={styles.description}>How often to generate summary notes from captured screenshots.</p>
-            <select
-              value={settings?.config.capture.summarization_interval_minutes ?? 60}
-              onChange={(e) => handleSettingChange('capture.summarization_interval_minutes', Number(e.target.value))}
-              style={styles.select}
-            >
-              {settings?.options.summarization_intervals.map((interval) => (
-                <option key={interval} value={interval}>
-                  {formatInterval(interval)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>Daily Revision Time</label>
-            <p style={styles.description}>When to run daily processing (revision, cleanup).</p>
-            <select
-              value={settings?.config.capture.daily_revision_hour ?? 3}
-              onChange={(e) => handleSettingChange('capture.daily_revision_hour', Number(e.target.value))}
-              style={styles.select}
-            >
-              {settings?.options.daily_revision_hours.map((hour) => (
-                <option key={hour} value={hour}>
-                  {formatHour(hour)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Screenshot Quality with intuitive labels */}
-          <div style={styles.field}>
-            <label style={styles.label}>Screenshot Quality</label>
-            <p style={styles.description}>
-              Choose the clarity of captured screenshots. Higher quality produces clearer text but uses more storage.
-            </p>
-            <select
-              value={getQualityLevel(settings?.config.capture.jpeg_quality ?? 85)}
-              onChange={(e) => handleSettingChange('capture.jpeg_quality', getQualityValue(e.target.value))}
-              style={styles.select}
-            >
-              <option value="standard">Standard – Smaller files, good for general use</option>
-              <option value="high">High – Clear text, recommended for most users</option>
-              <option value="ultra">Ultra – Maximum clarity, larger files</option>
-            </select>
-          </div>
-
-          {/* Deduplication Sensitivity with intuitive labels */}
-          <div style={styles.field}>
-            <label style={styles.label}>Change Detection</label>
-            <p style={styles.description}>
-              How sensitive Trace is to screen changes. Stricter settings capture more subtle changes but use more storage.
-            </p>
-            <select
-              value={getDedupLevel(settings?.config.capture.dedup_threshold ?? 5)}
-              onChange={(e) => handleSettingChange('capture.dedup_threshold', getDedupValue(e.target.value))}
-              style={styles.select}
-            >
-              <option value="very_strict">Very Strict – Best for coding, terminals, and detailed work</option>
-              <option value="strict">Strict – Catches small text and UI changes</option>
-              <option value="balanced">Balanced – Good for most activities (recommended)</option>
-              <option value="relaxed">Relaxed – Saves storage, best for video/browsing</option>
-            </select>
-            <p style={{...styles.description, marginTop: '8px', fontSize: '12px', color: '#888'}}>
-              {getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'very_strict'
-                ? '💡 Ideal for developers, writers, and professionals where small text changes matter.'
-                : getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'strict'
-                ? '💡 Good for work that involves frequent small updates to documents or code.'
-                : getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'balanced'
-                ? '💡 Works well for mixed activities like browsing, reading, and light work.'
-                : '💡 Best when watching videos, browsing social media, or other visual content.'}
-            </p>
-          </div>
-        </section>
-
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>AI Models</h2>
-          <p style={styles.description}>
-            Select which OpenAI models to use for different tasks. Faster models use less API credits.
-          </p>
-          <div style={styles.field}>
-            <label style={styles.label}>Frame Triage</label>
-            <p style={styles.description}>Fast model for analyzing screenshots and selecting keyframes.</p>
-            <select
-              value={settings?.config.models?.triage ?? 'gpt-5-nano-2025-08-07'}
-              onChange={(e) => handleSettingChange('models.triage', e.target.value)}
-              style={styles.select}
-            >
-              <option value="gpt-5-nano-2025-08-07">GPT-5 Nano (Fastest)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini</option>
-            </select>
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Hourly Summarization</label>
-            <p style={styles.description}>Model for generating hourly summary notes.</p>
-            <select
-              value={settings?.config.models?.hourly ?? 'gpt-5-mini-2025-08-07'}
-              onChange={(e) => handleSettingChange('models.hourly', e.target.value)}
-              style={styles.select}
-            >
-              <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Recommended)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini</option>
-              <option value="gpt-4o">GPT-4o (More detailed)</option>
-            </select>
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Daily Revision</label>
-            <p style={styles.description}>Full-featured model for daily note revision and entity extraction.</p>
-            <select
-              value={settings?.config.models?.daily ?? 'gpt-5.2-2025-12-11'}
-              onChange={(e) => handleSettingChange('models.daily', e.target.value)}
-              style={styles.select}
-            >
-              <option value="gpt-5.2-2025-12-11">GPT-5.2 (Best quality)</option>
-              <option value="gpt-4o">GPT-4o</option>
-              <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Faster)</option>
-            </select>
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Chat Responses</label>
-            <p style={styles.description}>Model for answering your questions about past activity.</p>
-            <select
-              value={settings?.config.models?.chat ?? 'gpt-5-mini-2025-08-07'}
-              onChange={(e) => handleSettingChange('models.chat', e.target.value)}
-              style={styles.select}
-            >
-              <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Recommended)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini (Faster)</option>
-              <option value="gpt-4o">GPT-4o (More detailed)</option>
-            </select>
-          </div>
-        </section>
-
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Notifications</h2>
-          <div style={styles.field}>
-            <div style={styles.toggleRow}>
-              <div>
-                <label style={styles.label}>Weekly Digest</label>
-                <p style={styles.description}>Receive a weekly summary notification.</p>
+              <div style={styles.field}>
+                <label style={styles.label}>Change Detection</label>
+                <p style={styles.description}>
+                  How sensitive Trace is to screen changes. Stricter settings capture more subtle changes but use more storage.
+                </p>
+                <select
+                  value={getDedupLevel(settings?.config.capture.dedup_threshold ?? 5)}
+                  onChange={(e) => handleSettingChange('capture.dedup_threshold', getDedupValue(e.target.value))}
+                  style={styles.select}
+                >
+                  <option value="very_strict">Very Strict – Best for coding, terminals, and detailed work</option>
+                  <option value="strict">Strict – Catches small text and UI changes</option>
+                  <option value="balanced">Balanced – Good for most activities (recommended)</option>
+                  <option value="relaxed">Relaxed – Saves storage, best for video/browsing</option>
+                </select>
+                <p style={{...styles.description, marginTop: '8px', fontSize: '12px', color: '#888'}}>
+                  {getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'very_strict'
+                    ? '💡 Ideal for developers, writers, and professionals where small text changes matter.'
+                    : getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'strict'
+                    ? '💡 Good for work that involves frequent small updates to documents or code.'
+                    : getDedupLevel(settings?.config.capture.dedup_threshold ?? 5) === 'balanced'
+                    ? '💡 Works well for mixed activities like browsing, reading, and light work.'
+                    : '💡 Best when watching videos, browsing social media, or other visual content.'}
+                </p>
               </div>
-              <label className="settings-switch" style={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={settings?.config.notifications.weekly_digest_enabled ?? true}
-                  onChange={(e) => handleSettingChange('notifications.weekly_digest_enabled', e.target.checked)}
-                />
-                <span style={styles.switchSlider}></span>
-              </label>
-            </div>
-          </div>
-          {settings?.config.notifications.weekly_digest_enabled && (
-            <div style={styles.field}>
-              <label style={styles.label}>Digest Day</label>
-              <p style={styles.description}>Day of the week to send the weekly digest.</p>
-              <select
-                value={settings?.config.notifications.weekly_digest_day ?? 'sunday'}
-                onChange={(e) => handleSettingChange('notifications.weekly_digest_day', e.target.value)}
-                style={styles.select}
-              >
-                {settings?.options.weekly_digest_days.map((day) => (
-                  <option key={day} value={day}>
-                    {day.charAt(0).toUpperCase() + day.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </section>
+            </section>
 
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Keyboard Shortcuts</h2>
-          <div style={styles.field}>
-            <div style={styles.toggleRow}>
-              <div>
-                <label style={styles.label}>Enable Global Shortcuts</label>
-                <p style={styles.description}>Allow Trace to respond to keyboard shortcuts even when not focused.</p>
+            {/* Processing */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Processing</h2>
+              <div style={styles.field}>
+                <label style={styles.label}>Summarization Interval</label>
+                <p style={styles.description}>How often to generate summary notes from captured screenshots.</p>
+                <select
+                  value={settings?.config.capture.summarization_interval_minutes ?? 60}
+                  onChange={(e) => handleSettingChange('capture.summarization_interval_minutes', Number(e.target.value))}
+                  style={styles.select}
+                >
+                  {settings?.options.summarization_intervals.map((interval) => (
+                    <option key={interval} value={interval}>
+                      {formatInterval(interval)}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <label className="settings-switch" style={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={shortcutsEnabled}
-                  onChange={async (e) => {
-                    const enabled = e.target.checked;
-                    setShortcutsEnabled(enabled);
-                    await window.traceAPI.shortcuts.setEnabled(enabled);
-                    await handleSettingChange('shortcuts.enabled', enabled);
-                  }}
-                />
-                <span style={styles.switchSlider}></span>
-              </label>
-            </div>
-          </div>
-          <div style={{ ...styles.field, opacity: shortcutsEnabled ? 1 : 0.5 }}>
-            <label style={styles.label}>Open Trace</label>
-            <p style={styles.description}>Global shortcut to show/hide the Trace window.</p>
-            <div style={styles.shortcutDisplay}>
-              {settings?.config.shortcuts.open_trace?.replace('CommandOrControl', '⌘').replace('+', ' + ') ?? '⌘ + Shift + T'}
-            </div>
-          </div>
-          <div style={{ ...styles.field, opacity: shortcutsEnabled ? 1 : 0.5 }}>
-            <label style={styles.label}>Quick Capture</label>
-            <p style={styles.description}>Global shortcut to open Trace and focus the chat input.</p>
-            <div style={styles.shortcutDisplay}>⌘ + Shift + N</div>
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Open Settings</label>
-            <p style={styles.description}>Open settings from anywhere in the app (works when Trace is focused).</p>
-            <div style={styles.shortcutDisplay}>⌘ + ,</div>
-          </div>
-          <div style={styles.field}>
-            <label style={styles.label}>Close Window</label>
-            <p style={styles.description}>Hide the Trace window (works when Trace is focused).</p>
-            <div style={styles.shortcutDisplay}>⌘ + W</div>
-          </div>
-        </section>
 
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Data Management</h2>
-          <div style={styles.field}>
-            <label style={styles.label}>Data Retention</label>
-            <p style={styles.description}>How long to keep notes and data. Older data will be automatically deleted.</p>
-            <select
-              value={settings?.config.data.retention_months ?? ''}
-              onChange={(e) => handleSettingChange('data.retention_months', e.target.value === '' ? null : Number(e.target.value))}
-              style={styles.select}
-            >
-              {settings?.options.retention_months.map((months) => (
-                <option key={months ?? 'forever'} value={months ?? ''}>
-                  {formatRetention(months)}
-                </option>
-              ))}
-            </select>
-          </div>
-        </section>
+              <div style={styles.field}>
+                <label style={styles.label}>Daily Revision Time</label>
+                <p style={styles.description}>When to run daily processing (revision, cleanup).</p>
+                <select
+                  value={settings?.config.capture.daily_revision_hour ?? 3}
+                  onChange={(e) => handleSettingChange('capture.daily_revision_hour', Number(e.target.value))}
+                  style={styles.select}
+                >
+                  {settings?.options.daily_revision_hours.map((hour) => (
+                    <option key={hour} value={hour}>
+                      {formatHour(hour)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </section>
+          </>
+        );
 
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Privacy Blocklist</h2>
+      case 'ai':
+        return (
+          <>
+            {/* API Configuration */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>API Configuration</h2>
+              <div style={styles.field}>
+                <label style={styles.label}>OpenAI API Key</label>
+                <p style={styles.description}>
+                  Required for generating summaries and answering queries.
+                </p>
 
-          {blocklistMessage && (
-            <div style={{
-              ...styles.message,
-              ...(blocklistMessage.type === 'success' ? styles.messageSuccess : styles.messageError),
-              marginBottom: '1rem',
-            }}>
-              {blocklistMessage.text}
-            </div>
-          )}
+                <div style={styles.apiKeyStatus}>
+                  {settings?.has_api_key ? (
+                    <>
+                      <span style={styles.apiKeyStatusSet}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                        API key is set
+                      </span>
+                      <button
+                        onClick={handleClearApiKey}
+                        style={styles.clearButton}
+                        type="button"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  ) : (
+                    <span style={styles.apiKeyStatusNotSet}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      No API key set
+                    </span>
+                  )}
+                </div>
 
-          <p style={styles.description}>
-            Block specific apps and websites from being captured.
-            Use this to protect sensitive activities like banking, medical, or password managers.
-          </p>
-
-          {/* Tab selector for Apps vs Domains */}
-          <div style={styles.tabContainer}>
-            <button
-              style={{
-                ...styles.tab,
-                ...(newBlockType === 'app' ? styles.tabActive : {}),
-              }}
-              onClick={() => setNewBlockType('app')}
-            >
-              Block Apps
-            </button>
-            <button
-              style={{
-                ...styles.tab,
-                ...(newBlockType === 'domain' ? styles.tabActive : {}),
-              }}
-              onClick={() => setNewBlockType('domain')}
-            >
-              Block Websites
-            </button>
-          </div>
-
-          {/* App picker */}
-          {newBlockType === 'app' && (
-            <div style={styles.blocklistAddSection}>
-              <button
-                onClick={() => setShowAppPicker(!showAppPicker)}
-                style={styles.appPickerButton}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Add Application to Blocklist
-              </button>
-
-              {showAppPicker && (
-                <div style={styles.appPickerDropdown}>
+                <div style={styles.inputRow}>
                   <input
-                    type="text"
-                    value={appSearchQuery}
-                    onChange={(e) => setAppSearchQuery(e.target.value)}
-                    placeholder="Search installed apps..."
-                    style={styles.appSearchInput}
-                    autoFocus
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="Enter new API key (sk-...)"
+                    style={styles.input}
                   />
-                  <div style={styles.appList}>
-                    {installedApps
-                      .filter(app =>
-                        app.name.toLowerCase().includes(appSearchQuery.toLowerCase()) ||
-                        app.bundleId.toLowerCase().includes(appSearchQuery.toLowerCase())
-                      )
-                      .slice(0, 20)
-                      .map((app) => {
-                        const isBlocked = blocklistEntries.some(
-                          (e) => e.block_type === 'app' && e.pattern === app.bundleId
-                        );
-                        return (
-                          <button
-                            key={app.bundleId}
+                  <button
+                    onClick={handleSaveApiKey}
+                    disabled={!apiKey.trim() || saving}
+                    style={{
+                      ...styles.saveButton,
+                      ...(!apiKey.trim() || saving ? styles.saveButtonDisabled : {}),
+                    }}
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={styles.field}>
+                <label style={styles.label}>Tavily API Key (Web Search)</label>
+                <p style={styles.description}>
+                  Optional. Enables web search to augment chat answers with current information.{' '}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.traceAPI?.shell?.openExternal('https://tavily.com');
+                    }}
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    Get a free key at tavily.com
+                  </a>
+                  {' '}(1,000 free searches/month)
+                </p>
+                {hasTavilyKey ? (
+                  <div style={styles.tavilyConfigured}>
+                    <div style={styles.keyConfigured}>
+                      <span style={styles.keyStatus}>✓ Web search enabled</span>
+                      <button
+                        onClick={handleClearTavilyKey}
+                        style={styles.clearButton}
+                      >
+                        Clear Key
+                      </button>
+                    </div>
+                    {tavilyUsage && (
+                      <div style={styles.usageStats}>
+                        <div style={styles.usageBar}>
+                          <div
                             style={{
-                              ...styles.appItem,
-                              ...(isBlocked ? styles.appItemDisabled : {}),
+                              ...styles.usageBarFill,
+                              width: `${Math.min(tavilyUsage.percentage, 100)}%`,
+                              backgroundColor: tavilyUsage.warning
+                                ? tavilyUsage.auto_disabled
+                                  ? '#ff3b30'
+                                  : '#ff9500'
+                                : 'var(--accent)',
                             }}
-                            onClick={async () => {
-                              if (isBlocked) return;
-                              try {
-                                const result = await window.traceAPI.blocklist.addApp(
-                                  app.bundleId,
-                                  app.name
-                                );
-                                if (result.success) {
-                                  setMessage({ type: 'success', text: `Blocked ${app.name}` });
-                                  loadBlocklist();
-                                  setShowAppPicker(false);
-                                  setAppSearchQuery('');
-                                }
-                              } catch (err) {
-                                setMessage({ type: 'error', text: 'Failed to add app' });
-                              }
-                            }}
-                            disabled={isBlocked}
-                          >
-                            <span style={styles.appItemName}>{app.name}</span>
-                            <span style={styles.appItemBundleId}>{app.bundleId}</span>
-                            {isBlocked && <span style={styles.appItemBlocked}>Already blocked</span>}
-                          </button>
-                        );
-                      })}
-                    {installedApps.filter(app =>
-                      app.name.toLowerCase().includes(appSearchQuery.toLowerCase()) ||
-                      app.bundleId.toLowerCase().includes(appSearchQuery.toLowerCase())
-                    ).length === 0 && (
-                      <div style={styles.appListEmpty}>
-                        No apps found matching &quot;{appSearchQuery}&quot;
+                          />
+                        </div>
+                        <div style={styles.usageText}>
+                          <span>
+                            {tavilyUsage.count} / {tavilyUsage.limit} searches this month
+                          </span>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            {tavilyUsage.remaining} remaining
+                          </span>
+                        </div>
+                        {tavilyUsage.warning && (
+                          <p style={{
+                            ...styles.tavilyNote,
+                            color: tavilyUsage.auto_disabled ? '#ff3b30' : '#ff9500',
+                            marginTop: '0.5rem',
+                          }}>
+                            {tavilyUsage.auto_disabled
+                              ? '⚠️ Auto web search disabled (95% limit). Manual "search the web" still works.'
+                              : '⚠️ Approaching monthly limit (80%)'}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Domain input */}
-          {newBlockType === 'domain' && (
-            <div style={styles.domainInputSection}>
-              <div style={styles.domainInputRow}>
-                <input
-                  type="text"
-                  value={newBlockPattern}
-                  onChange={(e) => setNewBlockPattern(e.target.value)}
-                  placeholder="Enter domain (e.g., bankofamerica.com)"
-                  style={styles.domainInput}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && newBlockPattern.trim()) {
-                      handleAddBlocklistEntry();
-                    }
-                  }}
-                />
-                <button
-                  onClick={handleAddBlocklistEntry}
-                  disabled={!newBlockPattern.trim()}
-                  style={{
-                    ...styles.addDomainButton,
-                    ...(!newBlockPattern.trim() ? styles.saveButtonDisabled : {}),
-                  }}
-                >
-                  Add Domain
-                </button>
-              </div>
-              <p style={styles.domainHint}>
-                Blocks all pages on this domain and its subdomains
-              </p>
-            </div>
-          )}
-
-          {/* Initialize defaults button */}
-          {blocklistEntries.length === 0 && (
-            <button
-              onClick={handleInitDefaults}
-              style={styles.initDefaultsButton}
-            >
-              Add Recommended Defaults (Banking, Password Managers)
-            </button>
-          )}
-
-          {/* Blocklist entries */}
-          {blocklistLoading ? (
-            <div style={styles.loading}>Loading blocklist...</div>
-          ) : blocklistEntries.length === 0 ? (
-            <p style={styles.emptyState}>No blocked apps or domains yet.</p>
-          ) : (
-            <div style={styles.blocklistEntries}>
-              {blocklistEntries.map((entry) => (
-                <div key={entry.blocklist_id} style={styles.blocklistEntry}>
-                  <div style={styles.entryInfo}>
-                    <span style={styles.entryType}>{entry.block_type}</span>
-                    <span style={styles.entryPattern}>
-                      {entry.display_name || entry.pattern}
-                    </span>
-                    {entry.display_name && (
-                      <span style={styles.entryPatternSub}>{entry.pattern}</span>
-                    )}
-                  </div>
-                  <div style={styles.entryActions}>
+                ) : (
+                  <div style={styles.inputGroup}>
+                    <input
+                      type="password"
+                      value={tavilyApiKey}
+                      onChange={(e) => setTavilyApiKey(e.target.value)}
+                      placeholder="tvly-..."
+                      style={styles.input}
+                    />
                     <button
-                      onClick={() => handleToggleBlocklistEntry(entry.blocklist_id, !entry.enabled)}
+                      onClick={handleSaveTavilyKey}
+                      disabled={!tavilyApiKey.trim() || saving}
                       style={{
-                        ...styles.toggleButton,
-                        ...(entry.enabled ? styles.toggleEnabled : styles.toggleDisabled),
+                        ...styles.button,
+                        ...((!tavilyApiKey.trim() || saving) ? styles.buttonDisabled : {}),
                       }}
                     >
-                      {entry.enabled ? 'Enabled' : 'Disabled'}
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* AI Models */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>AI Models</h2>
+              <p style={styles.description}>
+                Select which OpenAI models to use for different tasks. Faster models use less API credits.
+              </p>
+              <div style={styles.field}>
+                <label style={styles.label}>Frame Triage</label>
+                <p style={styles.description}>Fast model for analyzing screenshots and selecting keyframes.</p>
+                <select
+                  value={settings?.config.models?.triage ?? 'gpt-5-nano-2025-08-07'}
+                  onChange={(e) => handleSettingChange('models.triage', e.target.value)}
+                  style={styles.select}
+                >
+                  <option value="gpt-5-nano-2025-08-07">GPT-5 Nano (Fastest)</option>
+                  <option value="gpt-4o-mini">GPT-4o Mini</option>
+                </select>
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Hourly Summarization</label>
+                <p style={styles.description}>Model for generating hourly summary notes.</p>
+                <select
+                  value={settings?.config.models?.hourly ?? 'gpt-5-mini-2025-08-07'}
+                  onChange={(e) => handleSettingChange('models.hourly', e.target.value)}
+                  style={styles.select}
+                >
+                  <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Recommended)</option>
+                  <option value="gpt-4o-mini">GPT-4o Mini</option>
+                  <option value="gpt-4o">GPT-4o (More detailed)</option>
+                </select>
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Daily Revision</label>
+                <p style={styles.description}>Full-featured model for daily note revision and entity extraction.</p>
+                <select
+                  value={settings?.config.models?.daily ?? 'gpt-5.2-2025-12-11'}
+                  onChange={(e) => handleSettingChange('models.daily', e.target.value)}
+                  style={styles.select}
+                >
+                  <option value="gpt-5.2-2025-12-11">GPT-5.2 (Best quality)</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Faster)</option>
+                </select>
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Chat Responses</label>
+                <p style={styles.description}>Model for answering your questions about past activity.</p>
+                <select
+                  value={settings?.config.models?.chat ?? 'gpt-5-mini-2025-08-07'}
+                  onChange={(e) => handleSettingChange('models.chat', e.target.value)}
+                  style={styles.select}
+                >
+                  <option value="gpt-5-mini-2025-08-07">GPT-5 Mini (Recommended)</option>
+                  <option value="gpt-4o-mini">GPT-4o Mini (Faster)</option>
+                  <option value="gpt-4o">GPT-4o (More detailed)</option>
+                </select>
+              </div>
+            </section>
+          </>
+        );
+
+      case 'privacy':
+        return (
+          <>
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Privacy Blocklist</h2>
+
+              {blocklistMessage && (
+                <div style={{
+                  ...styles.message,
+                  ...(blocklistMessage.type === 'success' ? styles.messageSuccess : styles.messageError),
+                  marginBottom: '1rem',
+                }}>
+                  {blocklistMessage.text}
+                </div>
+              )}
+
+              <p style={styles.description}>
+                Block specific apps and websites from being captured.
+                Use this to protect sensitive activities like banking, medical, or password managers.
+              </p>
+
+              {/* Tab selector for Apps vs Domains */}
+              <div style={styles.blocklistTabContainer}>
+                <button
+                  style={{
+                    ...styles.blocklistTab,
+                    ...(newBlockType === 'app' ? styles.blocklistTabActive : {}),
+                  }}
+                  onClick={() => setNewBlockType('app')}
+                >
+                  Block Apps
+                </button>
+                <button
+                  style={{
+                    ...styles.blocklistTab,
+                    ...(newBlockType === 'domain' ? styles.blocklistTabActive : {}),
+                  }}
+                  onClick={() => setNewBlockType('domain')}
+                >
+                  Block Websites
+                </button>
+              </div>
+
+              {/* App picker */}
+              {newBlockType === 'app' && (
+                <div style={styles.blocklistAddSection}>
+                  <button
+                    onClick={() => setShowAppPicker(!showAppPicker)}
+                    style={styles.appPickerButton}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Add Application to Blocklist
+                  </button>
+
+                  {showAppPicker && (
+                    <div style={styles.appPickerDropdown}>
+                      <input
+                        type="text"
+                        value={appSearchQuery}
+                        onChange={(e) => setAppSearchQuery(e.target.value)}
+                        placeholder="Search installed apps..."
+                        style={styles.appSearchInput}
+                        autoFocus
+                      />
+                      <div style={styles.appList}>
+                        {installedApps
+                          .filter(app =>
+                            app.name.toLowerCase().includes(appSearchQuery.toLowerCase()) ||
+                            app.bundleId.toLowerCase().includes(appSearchQuery.toLowerCase())
+                          )
+                          .slice(0, 20)
+                          .map((app) => {
+                            const isBlocked = blocklistEntries.some(
+                              (e) => e.block_type === 'app' && e.pattern === app.bundleId
+                            );
+                            return (
+                              <button
+                                key={app.bundleId}
+                                style={{
+                                  ...styles.appItem,
+                                  ...(isBlocked ? styles.appItemDisabled : {}),
+                                }}
+                                onClick={async () => {
+                                  if (isBlocked) return;
+                                  try {
+                                    const result = await window.traceAPI.blocklist.addApp(
+                                      app.bundleId,
+                                      app.name
+                                    );
+                                    if (result.success) {
+                                      setMessage({ type: 'success', text: `Blocked ${app.name}` });
+                                      loadBlocklist();
+                                      setShowAppPicker(false);
+                                      setAppSearchQuery('');
+                                    }
+                                  } catch (err) {
+                                    setMessage({ type: 'error', text: 'Failed to add app' });
+                                  }
+                                }}
+                                disabled={isBlocked}
+                              >
+                                <span style={styles.appItemName}>{app.name}</span>
+                                <span style={styles.appItemBundleId}>{app.bundleId}</span>
+                                {isBlocked && <span style={styles.appItemBlocked}>Already blocked</span>}
+                              </button>
+                            );
+                          })}
+                        {installedApps.filter(app =>
+                          app.name.toLowerCase().includes(appSearchQuery.toLowerCase()) ||
+                          app.bundleId.toLowerCase().includes(appSearchQuery.toLowerCase())
+                        ).length === 0 && (
+                          <div style={styles.appListEmpty}>
+                            No apps found matching &quot;{appSearchQuery}&quot;
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Domain input */}
+              {newBlockType === 'domain' && (
+                <div style={styles.domainInputSection}>
+                  <div style={styles.domainInputRow}>
+                    <input
+                      type="text"
+                      value={newBlockPattern}
+                      onChange={(e) => setNewBlockPattern(e.target.value)}
+                      placeholder="Enter domain (e.g., bankofamerica.com)"
+                      style={styles.domainInput}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && newBlockPattern.trim()) {
+                          handleAddBlocklistEntry();
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={handleAddBlocklistEntry}
+                      disabled={!newBlockPattern.trim()}
+                      style={{
+                        ...styles.addDomainButton,
+                        ...(!newBlockPattern.trim() ? styles.saveButtonDisabled : {}),
+                      }}
+                    >
+                      Add Domain
+                    </button>
+                  </div>
+                  <p style={styles.domainHint}>
+                    Blocks all pages on this domain and its subdomains
+                  </p>
+                </div>
+              )}
+
+              {/* Initialize defaults button */}
+              {blocklistEntries.length === 0 && (
+                <button
+                  onClick={handleInitDefaults}
+                  style={styles.initDefaultsButton}
+                >
+                  Add Recommended Defaults (Banking, Password Managers)
+                </button>
+              )}
+
+              {/* Blocklist entries */}
+              {blocklistLoading ? (
+                <div style={styles.loading}>Loading blocklist...</div>
+              ) : blocklistEntries.length === 0 ? (
+                <p style={styles.emptyState}>No blocked apps or domains yet.</p>
+              ) : (
+                <div style={styles.blocklistEntries}>
+                  {blocklistEntries.map((entry) => (
+                    <div key={entry.blocklist_id} style={styles.blocklistEntry}>
+                      <div style={styles.entryInfo}>
+                        <span style={styles.entryType}>{entry.block_type}</span>
+                        <span style={styles.entryPattern}>
+                          {entry.display_name || entry.pattern}
+                        </span>
+                        {entry.display_name && (
+                          <span style={styles.entryPatternSub}>{entry.pattern}</span>
+                        )}
+                      </div>
+                      <div style={styles.entryActions}>
+                        <button
+                          onClick={() => handleToggleBlocklistEntry(entry.blocklist_id, !entry.enabled)}
+                          style={{
+                            ...styles.toggleButton,
+                            ...(entry.enabled ? styles.toggleEnabled : styles.toggleDisabled),
+                          }}
+                        >
+                          {entry.enabled ? 'Enabled' : 'Disabled'}
+                        </button>
+                        <button
+                          onClick={() => handleRemoveBlocklistEntry(entry.blocklist_id)}
+                          style={styles.removeButton}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        );
+
+      case 'advanced':
+        return (
+          <>
+            {/* Memory & Personalization */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Memory & Personalization</h2>
+              <p style={styles.description}>
+                Trace learns about you through conversations to personalize your experience.
+              </p>
+
+              {memorySummary && (
+                <div style={styles.memorySummaryBox}>
+                  <div style={styles.memorySummaryTitle}>What Trace knows about you:</div>
+                  <div style={styles.memorySummaryContent}>
+                    {memoryLoading ? 'Loading...' : memorySummary}
+                  </div>
+                </div>
+              )}
+
+              <div style={styles.memoryButtonsContainer}>
+                <button
+                  onClick={() => navigate('/onboarding/profile', { state: { mode: 'update' } })}
+                  style={styles.memoryButton}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
+                  Update Memory
+                </button>
+                <button
+                  onClick={() => setShowRestartConfirm(true)}
+                  style={styles.memoryButtonSecondary}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M23 4v6h-6" />
+                    <path d="M1 20v-6h6" />
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                  </svg>
+                  Restart Onboarding
+                </button>
+              </div>
+
+              {showRestartConfirm && (
+                <div style={styles.confirmDialog}>
+                  <div style={styles.confirmDialogContent}>
+                    <p style={styles.confirmText}>
+                      This will clear all your memory data and start the onboarding process from scratch. Are you sure?
+                    </p>
+                    <div style={styles.confirmButtons}>
+                      <button
+                        onClick={() => setShowRestartConfirm(false)}
+                        style={styles.confirmCancelButton}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowRestartConfirm(false);
+                          navigate('/onboarding/profile', { state: { mode: 'restart' } });
+                        }}
+                        style={styles.confirmDangerButton}
+                      >
+                        Yes, Restart
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* Data Management */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Data Management</h2>
+              <div style={styles.field}>
+                <label style={styles.label}>Data Retention</label>
+                <p style={styles.description}>How long to keep notes and data. Older data will be automatically deleted.</p>
+                <select
+                  value={settings?.config.data.retention_months ?? ''}
+                  onChange={(e) => handleSettingChange('data.retention_months', e.target.value === '' ? null : Number(e.target.value))}
+                  style={styles.select}
+                >
+                  {settings?.options.retention_months.map((months) => (
+                    <option key={months ?? 'forever'} value={months ?? ''}>
+                      {formatRetention(months)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </section>
+
+            {/* Export & Backup */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Export & Backup</h2>
+              <p style={styles.description}>
+                Export your data as a ZIP archive containing all notes, entities, and relationships.
+              </p>
+
+              {exportSummary && (
+                <div style={styles.exportSummary}>
+                  <div style={styles.summaryItem}>
+                    <span style={styles.summaryLabel}>Notes</span>
+                    <span style={styles.summaryValue}>{exportSummary.notes_in_db}</span>
+                  </div>
+                  <div style={styles.summaryItem}>
+                    <span style={styles.summaryLabel}>Markdown Files</span>
+                    <span style={styles.summaryValue}>{exportSummary.markdown_files}</span>
+                  </div>
+                  <div style={styles.summaryItem}>
+                    <span style={styles.summaryLabel}>Entities</span>
+                    <span style={styles.summaryValue}>{exportSummary.entities}</span>
+                  </div>
+                  <div style={styles.summaryItem}>
+                    <span style={styles.summaryLabel}>Relationships</span>
+                    <span style={styles.summaryValue}>{exportSummary.edges}</span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleExport}
+                disabled={exportLoading}
+                style={{
+                  ...styles.exportButton,
+                  ...(exportLoading ? styles.saveButtonDisabled : {}),
+                }}
+              >
+                {exportLoading ? 'Exporting...' : 'Export to ZIP Archive'}
+              </button>
+            </section>
+
+            {/* Reset All Data */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Reset All Data</h2>
+              <p style={styles.description}>
+                Permanently delete all your Trace data including notes, entities, relationships, and user memory.
+                <strong style={{ color: '#ef4444' }}> This action cannot be undone.</strong>
+              </p>
+
+              {dataSummary && (dataSummary.notes_count > 0 || dataSummary.memory_exists) && (
+                <div style={styles.resetWarning}>
+                  <div style={styles.warningHeader}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <span>Data that will be deleted:</span>
+                  </div>
+                  <ul style={styles.resetDataList}>
+                    {dataSummary.notes_count > 0 && (
+                      <li>{dataSummary.notes_count} notes ({formatBytes(dataSummary.notes_size_bytes)})</li>
+                    )}
+                    {dataSummary.tables_with_data.map((t) => (
+                      <li key={t.table}>{t.count} {t.table.replace('_', ' ')}</li>
+                    ))}
+                    {dataSummary.memory_exists && <li>User memory profile</li>}
+                    {dataSummary.cache_size_bytes > 0 && (
+                      <li>Cache ({formatBytes(dataSummary.cache_size_bytes)})</li>
+                    )}
+                  </ul>
+                  <p style={styles.backupReminder}>
+                    We recommend exporting your data first using the Export feature above.
+                  </p>
+                </div>
+              )}
+
+              {!showResetConfirm ? (
+                <button
+                  onClick={() => setShowResetConfirm(true)}
+                  style={styles.resetButton}
+                >
+                  Reset All Data
+                </button>
+              ) : (
+                <div style={styles.resetConfirmBox}>
+                  <p style={styles.resetConfirmText}>
+                    Are you sure you want to delete all your data? This cannot be undone.
+                  </p>
+                  <div style={styles.resetConfirmButtons}>
+                    <button
+                      onClick={() => setShowResetConfirm(false)}
+                      style={styles.cancelButton}
+                      disabled={resetLoading}
+                    >
+                      Cancel
                     </button>
                     <button
-                      onClick={() => handleRemoveBlocklistEntry(entry.blocklist_id)}
-                      style={styles.removeButton}
+                      onClick={handleResetAllData}
+                      disabled={resetLoading}
+                      style={{
+                        ...styles.confirmResetButton,
+                        ...(resetLoading ? styles.saveButtonDisabled : {}),
+                      }}
                     >
-                      Remove
+                      {resetLoading ? 'Resetting...' : 'Yes, Delete Everything'}
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Export & Backup</h2>
-          <p style={styles.description}>
-            Export your data as a ZIP archive containing all notes, entities, and relationships.
-          </p>
-
-          {exportSummary && (
-            <div style={styles.exportSummary}>
-              <div style={styles.summaryItem}>
-                <span style={styles.summaryLabel}>Notes</span>
-                <span style={styles.summaryValue}>{exportSummary.notes_in_db}</span>
-              </div>
-              <div style={styles.summaryItem}>
-                <span style={styles.summaryLabel}>Markdown Files</span>
-                <span style={styles.summaryValue}>{exportSummary.markdown_files}</span>
-              </div>
-              <div style={styles.summaryItem}>
-                <span style={styles.summaryLabel}>Entities</span>
-                <span style={styles.summaryValue}>{exportSummary.entities}</span>
-              </div>
-              <div style={styles.summaryItem}>
-                <span style={styles.summaryLabel}>Relationships</span>
-                <span style={styles.summaryValue}>{exportSummary.edges}</span>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={handleExport}
-            disabled={exportLoading}
-            style={{
-              ...styles.exportButton,
-              ...(exportLoading ? styles.saveButtonDisabled : {}),
-            }}
-          >
-            {exportLoading ? 'Exporting...' : 'Export to ZIP Archive'}
-          </button>
-        </section>
-
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Reset All Data</h2>
-          <p style={styles.description}>
-            Permanently delete all your Trace data including notes, entities, relationships, and user memory.
-            <strong style={{ color: '#ef4444' }}> This action cannot be undone.</strong>
-          </p>
-
-          {dataSummary && (dataSummary.notes_count > 0 || dataSummary.memory_exists) && (
-            <div style={styles.resetWarning}>
-              <div style={styles.warningHeader}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-                <span>Data that will be deleted:</span>
-              </div>
-              <ul style={styles.resetDataList}>
-                {dataSummary.notes_count > 0 && (
-                  <li>{dataSummary.notes_count} notes ({formatBytes(dataSummary.notes_size_bytes)})</li>
-                )}
-                {dataSummary.tables_with_data.map((t) => (
-                  <li key={t.table}>{t.count} {t.table.replace('_', ' ')}</li>
-                ))}
-                {dataSummary.memory_exists && <li>User memory profile</li>}
-                {dataSummary.cache_size_bytes > 0 && (
-                  <li>Cache ({formatBytes(dataSummary.cache_size_bytes)})</li>
-                )}
-              </ul>
-              <p style={styles.backupReminder}>
-                We recommend exporting your data first using the Export feature above.
-              </p>
-            </div>
-          )}
-
-          {!showResetConfirm ? (
-            <button
-              onClick={() => setShowResetConfirm(true)}
-              style={styles.resetButton}
-            >
-              Reset All Data
-            </button>
-          ) : (
-            <div style={styles.resetConfirmBox}>
-              <p style={styles.resetConfirmText}>
-                Are you sure you want to delete all your data? This cannot be undone.
-              </p>
-              <div style={styles.resetConfirmButtons}>
-                <button
-                  onClick={() => setShowResetConfirm(false)}
-                  style={styles.cancelButton}
-                  disabled={resetLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleResetAllData}
-                  disabled={resetLoading}
-                  style={{
-                    ...styles.confirmResetButton,
-                    ...(resetLoading ? styles.saveButtonDisabled : {}),
-                  }}
-                >
-                  {resetLoading ? 'Resetting...' : 'Yes, Delete Everything'}
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>Updates</h2>
-          <div style={styles.field}>
-            <div style={styles.toggleRow}>
-              <div>
-                <label style={styles.label}>Check for Updates on Launch</label>
-                <p style={styles.description}>Automatically check for updates when Trace starts.</p>
-              </div>
-              <label className="settings-switch" style={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={settings?.config.updates?.check_on_launch ?? true}
-                  onChange={(e) => handleSettingChange('updates.check_on_launch', e.target.checked)}
-                />
-                <span style={styles.switchSlider}></span>
-              </label>
-            </div>
-          </div>
-          <div style={styles.field}>
-            <div style={styles.toggleRow}>
-              <div>
-                <label style={styles.label}>Check Periodically</label>
-                <p style={styles.description}>Check for updates in the background every 24 hours.</p>
-              </div>
-              <label className="settings-switch" style={styles.switch}>
-                <input
-                  type="checkbox"
-                  checked={settings?.config.updates?.check_periodically ?? true}
-                  onChange={(e) => handleSettingChange('updates.check_periodically', e.target.checked)}
-                />
-                <span style={styles.switchSlider}></span>
-              </label>
-            </div>
-          </div>
-
-          {updateInfo?.available && (
-            <div style={styles.updateAvailable}>
-              <div style={styles.updateAvailableHeader}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                <span>Update Available: v{updateInfo.latestVersion}</span>
-              </div>
-              {updateInfo.releaseNotes && (
-                <p style={styles.updateNotes}>{updateInfo.releaseNotes}</p>
               )}
+            </section>
+
+            {/* Updates */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>Updates</h2>
+              <div style={styles.field}>
+                <div style={styles.toggleRow}>
+                  <div>
+                    <label style={styles.label}>Check for Updates on Launch</label>
+                    <p style={styles.description}>Automatically check for updates when Trace starts.</p>
+                  </div>
+                  <label className="settings-switch" style={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={settings?.config.updates?.check_on_launch ?? true}
+                      onChange={(e) => handleSettingChange('updates.check_on_launch', e.target.checked)}
+                    />
+                    <span style={styles.switchSlider}></span>
+                  </label>
+                </div>
+              </div>
+              <div style={styles.field}>
+                <div style={styles.toggleRow}>
+                  <div>
+                    <label style={styles.label}>Check Periodically</label>
+                    <p style={styles.description}>Check for updates in the background every 24 hours.</p>
+                  </div>
+                  <label className="settings-switch" style={styles.switch}>
+                    <input
+                      type="checkbox"
+                      checked={settings?.config.updates?.check_periodically ?? true}
+                      onChange={(e) => handleSettingChange('updates.check_periodically', e.target.checked)}
+                    />
+                    <span style={styles.switchSlider}></span>
+                  </label>
+                </div>
+              </div>
+
+              {updateInfo?.available && (
+                <div style={styles.updateAvailable}>
+                  <div style={styles.updateAvailableHeader}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <span>Update Available: v{updateInfo.latestVersion}</span>
+                  </div>
+                  {updateInfo.releaseNotes && (
+                    <p style={styles.updateNotes}>{updateInfo.releaseNotes}</p>
+                  )}
+                  <button
+                    onClick={() => updateInfo.releaseUrl && handleOpenReleasePage(updateInfo.releaseUrl)}
+                    style={styles.downloadButton}
+                  >
+                    Download Update
+                  </button>
+                </div>
+              )}
+
               <button
-                onClick={() => updateInfo.releaseUrl && handleOpenReleasePage(updateInfo.releaseUrl)}
-                style={styles.downloadButton}
+                onClick={handleCheckForUpdates}
+                disabled={updateChecking}
+                style={{
+                  ...styles.checkUpdateButton,
+                  ...(updateChecking ? styles.saveButtonDisabled : {}),
+                }}
               >
-                Download Update
+                {updateChecking ? 'Checking...' : 'Check for Updates Now'}
               </button>
-            </div>
-          )}
+            </section>
 
-          <button
-            onClick={handleCheckForUpdates}
-            disabled={updateChecking}
-            style={{
-              ...styles.checkUpdateButton,
-              ...(updateChecking ? styles.saveButtonDisabled : {}),
-            }}
-          >
-            {updateChecking ? 'Checking...' : 'Check for Updates Now'}
-          </button>
-        </section>
+            {/* About */}
+            <section style={styles.section}>
+              <h2 style={styles.sectionTitle}>About</h2>
+              <div style={styles.field}>
+                <p style={styles.aboutText}>
+                  Trace is a macOS app that captures your digital activity,
+                  generates Markdown notes, builds a relationship graph,
+                  and provides time-aware chat and search.
+                </p>
+              </div>
+              {appVersion && (
+                <div style={styles.versionInfo}>
+                  Version {appVersion}
+                </div>
+              )}
+            </section>
+          </>
+        );
+    }
+  };
 
-        <section style={styles.section}>
-          <h2 style={styles.sectionTitle}>About</h2>
-          <div style={styles.field}>
-            <p style={styles.aboutText}>
-              Trace is a macOS app that captures your digital activity,
-              generates Markdown notes, builds a relationship graph,
-              and provides time-aware chat and search.
-            </p>
+  return (
+    <div style={styles.container}>
+      <div className="titlebar" style={styles.titlebar} />
+      <div style={styles.layout}>
+        {/* Sidebar with tabs */}
+        <nav style={styles.sidebar}>
+          <div style={styles.sidebarHeader}>
+            <button onClick={() => navigate(-1)} style={styles.backButton}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 12H5" />
+                <path d="M12 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
           </div>
-          {appVersion && (
-            <div style={styles.versionInfo}>
-              Version {appVersion}
-            </div>
-          )}
-        </section>
-      </main>
+          <div style={styles.tabList}>
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  ...styles.tabButton,
+                  ...(activeTab === tab.id ? styles.tabButtonActive : {}),
+                }}
+              >
+                <span style={styles.tabIcon}>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+
+        {/* Main content area - scrollable */}
+        <main style={styles.main}>
+          <div style={styles.contentWrapper}>
+            <h1 style={styles.title}>
+              {TABS.find(t => t.id === activeTab)?.label}
+            </h1>
+
+            {message && (
+              <div style={{
+                ...styles.message,
+                ...(message.type === 'success' ? styles.messageSuccess : styles.messageError),
+              }}>
+                {message.text}
+              </div>
+            )}
+
+            {renderTabContent()}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
@@ -1559,24 +1616,31 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
+    overflow: 'hidden',
   },
   titlebar: {
     minHeight: '36px',
+    flexShrink: 0,
   },
-  main: {
+  layout: {
     flex: 1,
-    minHeight: 0,
-    padding: '2rem',
-    maxWidth: '600px',
-    width: '100%',
-    margin: '0 auto',
-    overflowY: 'auto',
-  },
-  header: {
     display: 'flex',
-    alignItems: 'center',
-    gap: '1rem',
-    marginBottom: '2rem',
+    minHeight: 0,
+    overflow: 'hidden',
+  },
+  sidebar: {
+    width: '200px',
+    flexShrink: 0,
+    backgroundColor: 'var(--bg-secondary)',
+    borderRight: '1px solid var(--border)',
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '1rem 0',
+  },
+  sidebarHeader: {
+    padding: '0 1rem 1rem',
+    borderBottom: '1px solid var(--border)',
+    marginBottom: '0.5rem',
   },
   backButton: {
     display: 'flex',
@@ -1585,21 +1649,64 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     color: 'var(--accent)',
-    fontSize: '0.9rem',
+    fontSize: '0.85rem',
     cursor: 'pointer',
     padding: '0.5rem',
     borderRadius: '6px',
+    width: '100%',
+  },
+  tabList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+    padding: '0 0.5rem',
+  },
+  tabButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    padding: '0.625rem 0.75rem',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '0.9rem',
+    color: 'var(--text-secondary)',
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'all 0.15s ease',
+  },
+  tabButtonActive: {
+    backgroundColor: 'var(--accent)',
+    color: 'white',
+  },
+  tabIcon: {
+    fontSize: '1rem',
+    width: '20px',
+    textAlign: 'center',
+  },
+  main: {
+    flex: 1,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+  },
+  contentWrapper: {
+    maxWidth: '600px',
+    padding: '2rem',
+    margin: '0 auto',
+  },
+  loadingContainer: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: '1.5rem',
     fontWeight: 600,
     color: 'var(--text-primary)',
+    marginBottom: '1.5rem',
   },
   loading: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: '200px',
     color: 'var(--text-secondary)',
   },
   message: {
@@ -1659,6 +1766,16 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: '0.75rem',
   },
+  keyConfigured: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  keyStatus: {
+    color: '#34c759',
+    fontWeight: 500,
+    fontSize: '0.9rem',
+  },
   usageStats: {
     display: 'flex',
     flexDirection: 'column' as const,
@@ -1681,11 +1798,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.8rem',
     color: 'var(--text-primary)',
   },
-  status: {
-    color: '#34c759',
-    fontWeight: 500,
-  },
   inputRow: {
+    display: 'flex',
+    gap: '0.5rem',
+  },
+  inputGroup: {
     display: 'flex',
     gap: '0.5rem',
   },
@@ -1718,6 +1835,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'white',
     cursor: 'pointer',
   },
+  button: {
+    backgroundColor: 'var(--accent)',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '0.625rem 1.25rem',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    color: 'white',
+    cursor: 'pointer',
+  },
+  buttonDisabled: {
+    backgroundColor: '#404040',
+    cursor: 'not-allowed',
+    opacity: 0.5,
+  },
   saveButtonDisabled: {
     backgroundColor: '#404040',
     cursor: 'not-allowed',
@@ -1728,7 +1860,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     lineHeight: 1.6,
   },
-  // Toggle switch styles
   toggleRow: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -1751,7 +1882,6 @@ const styles: Record<string, React.CSSProperties> = {
     bottom: 0,
     borderRadius: '24px',
   },
-  // Select styles
   select: {
     backgroundColor: 'var(--bg-secondary)',
     border: '1px solid var(--border)',
@@ -1762,9 +1892,9 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none',
     cursor: 'pointer',
     minWidth: '200px',
+    width: '100%',
     WebkitAppearance: 'menulist',
   },
-  // Slider styles
   sliderRow: {
     display: 'flex',
     alignItems: 'center',
@@ -1786,7 +1916,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-primary)',
     fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace',
   },
-  // Shortcut display
   shortcutDisplay: {
     display: 'inline-block',
     backgroundColor: 'var(--bg-secondary)',
@@ -1797,13 +1926,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace',
     color: 'var(--text-primary)',
   },
-  // Blocklist styles
-  tabContainer: {
+  blocklistTabContainer: {
     display: 'flex',
     gap: '0.5rem',
     marginBottom: '1rem',
   },
-  tab: {
+  blocklistTab: {
     flex: 1,
     padding: '0.75rem 1rem',
     backgroundColor: 'var(--bg-secondary)',
@@ -1815,7 +1943,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     transition: 'all 0.2s ease',
   },
-  tabActive: {
+  blocklistTabActive: {
     backgroundColor: 'var(--accent)',
     borderColor: 'var(--accent)',
     color: 'white',
@@ -2009,7 +2137,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ff3b30',
     cursor: 'pointer',
   },
-  // Export styles
   exportSummary: {
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
@@ -2051,7 +2178,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     textAlign: 'center' as const,
   },
-  // Update section styles
   updateAvailable: {
     backgroundColor: 'rgba(52, 199, 89, 0.1)',
     border: '1px solid rgba(52, 199, 89, 0.3)',
@@ -2095,7 +2221,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
   },
-  // API key status styles
   apiKeyStatus: {
     display: 'flex',
     alignItems: 'center',
@@ -2131,31 +2256,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ff3b30',
     cursor: 'pointer',
   },
-  // Profile input styles
-  profileInput: {
-    width: '100%',
-    backgroundColor: 'var(--bg-secondary)',
-    border: '1px solid var(--border)',
-    borderRadius: '8px',
-    padding: '0.625rem 0.875rem',
-    fontSize: '0.9rem',
-    color: 'var(--text-primary)',
-    outline: 'none',
-  },
-  profileTextarea: {
-    width: '100%',
-    backgroundColor: 'var(--bg-secondary)',
-    border: '1px solid var(--border)',
-    borderRadius: '8px',
-    padding: '0.625rem 0.875rem',
-    fontSize: '0.9rem',
-    color: 'var(--text-primary)',
-    outline: 'none',
-    minHeight: '80px',
-    resize: 'vertical' as const,
-    fontFamily: 'inherit',
-  },
-  // Power saving and slider styles
   powerSavingOptions: {
     marginTop: '1rem',
     paddingTop: '1rem',
@@ -2168,46 +2268,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-secondary)',
     marginBottom: '0.5rem',
   },
-  infoBox: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: '0.5rem',
-    marginTop: '1rem',
-    padding: '0.75rem 1rem',
-    backgroundColor: 'rgba(0, 122, 255, 0.1)',
-    border: '1px solid rgba(0, 122, 255, 0.2)',
-    borderRadius: '8px',
-    fontSize: '0.85rem',
-    color: 'var(--text-secondary)',
-    lineHeight: 1.5,
-  },
-  infoIcon: {
-    fontSize: '1rem',
-    flexShrink: 0,
-  },
-  sliderContainer: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '0.5rem',
-  },
-  sliderLabels: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: '0.75rem',
-    color: 'var(--text-secondary)',
-  },
-  sliderLabelLeft: {
-    textAlign: 'left' as const,
-  },
-  sliderLabelRight: {
-    textAlign: 'right' as const,
-  },
-  sliderHint: {
-    fontSize: '0.8rem',
-    color: 'var(--text-secondary)',
-    marginTop: '0.25rem',
-  },
-  // Memory section styles
   memorySummaryBox: {
     backgroundColor: 'var(--bg-secondary)',
     border: '1px solid var(--border)',
@@ -2304,7 +2364,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'white',
     cursor: 'pointer',
   },
-  // Reset data styles
   resetWarning: {
     backgroundColor: 'rgba(255, 59, 48, 0.1)',
     border: '1px solid rgba(255, 59, 48, 0.3)',
