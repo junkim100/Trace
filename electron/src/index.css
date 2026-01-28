@@ -119,23 +119,28 @@ body {
   animation: fadeIn 0.4s ease-out;
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling - minimal, at window edge */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--bg-primary);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid var(--bg-primary);
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #505050;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--bg-primary);
 }
 
 /* Button hover states */

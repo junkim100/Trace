@@ -1709,6 +1709,7 @@ const styles: Record<string, React.CSSProperties> = {
   contentWrapper: {
     maxWidth: '600px',
     padding: '2rem',
+    paddingRight: '1.5rem',
     margin: '0 auto',
   },
   loadingContainer: {

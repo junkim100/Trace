@@ -57,24 +57,32 @@ def handle_list_conversations(params: dict[str, Any]) -> dict[str, Any]:
             "total_count": int
         }
     """
-    manager = get_conversation_manager()
+    try:
+        manager = get_conversation_manager()
 
-    limit = params.get("limit", 50)
-    offset = params.get("offset", 0)
-    include_archived = params.get("include_archived", False)
-    search_query = params.get("search_query")
+        limit = params.get("limit", 50)
+        offset = params.get("offset", 0)
+        include_archived = params.get("include_archived", False)
+        search_query = params.get("search_query")
 
-    conversations, total_count = manager.list(
-        limit=limit,
-        offset=offset,
-        include_archived=include_archived,
-        search_query=search_query,
-    )
+        conversations, total_count = manager.list(
+            limit=limit,
+            offset=offset,
+            include_archived=include_archived,
+            search_query=search_query,
+        )
 
-    return {
-        "conversations": [c.to_dict() for c in conversations],
-        "total_count": total_count,
-    }
+        return {
+            "conversations": [c.to_dict() for c in conversations],
+            "total_count": total_count,
+        }
+    except Exception:
+        logger.exception("Failed to list conversations")
+        # Return empty list on error (graceful degradation for new installs)
+        return {
+            "conversations": [],
+            "total_count": 0,
+        }
 
 
 @handler("conversations.create")
@@ -87,12 +95,16 @@ def handle_create_conversation(params: dict[str, Any]) -> dict[str, Any]:
     Returns:
         {"conversation": {...}}
     """
-    manager = get_conversation_manager()
+    try:
+        manager = get_conversation_manager()
 
-    title = params.get("title")
-    conversation = manager.create(title=title)
+        title = params.get("title")
+        conversation = manager.create(title=title)
 
-    return {"conversation": conversation.to_dict()}
+        return {"conversation": conversation.to_dict()}
+    except Exception as e:
+        logger.exception("Failed to create conversation")
+        raise ValueError(f"Failed to create conversation: {e}") from e
 
 
 @handler("conversations.get")
