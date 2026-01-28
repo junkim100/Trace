@@ -23,7 +23,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from openai import OpenAI
 
-from src.core.paths import DB_PATH
+from src.core.paths import DB_PATH, get_trace_day, get_trace_day_range
 from src.db.migrations import get_connection
 from src.graph.edges import GraphEdgeBuilder
 from src.memory.daily_update import update_memory_from_daily_note
@@ -126,16 +126,23 @@ class DailyJobExecutor:
 
     def create_pending_job(self, day: datetime) -> str:
         """
-        Create a pending job for a day.
+        Create a pending job for a Trace day.
+
+        A Trace day runs from daily_revision_hour to daily_revision_hour the next day.
+        For example, if daily_revision_hour=8:
+        - "Jan 28 Trace day" = 8am Jan 28 to 8am Jan 29
 
         Args:
-            day: The day to create job for
+            day: The Trace day to create job for (uses date portion only)
 
         Returns:
             Job ID
         """
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+        # Get the Trace day range
+        trace_day = day.date() if isinstance(day, datetime) else day
+        day_start, day_end = get_trace_day_range(trace_day)
+        # Adjust day_end to be inclusive (23:59:59 of the range)
+        day_end = day_end - timedelta(microseconds=1)
 
         conn = get_connection(self.db_path)
         try:
@@ -652,15 +659,18 @@ class DailyJobScheduler:
         logger.info("Daily job scheduler stopped")
 
     def _daily_job(self) -> None:
-        """Job that runs once per day."""
-        # Create job for yesterday (today's data is still being captured)
-        yesterday = (datetime.now() - timedelta(days=1)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        """Job that runs once per day at the configured hour."""
+        # Get the Trace day that just ended
+        # When this runs at 8am Jan 29, the Trace day that ended is Jan 28
+        # (Jan 28 Trace day = 8am Jan 28 to 8am Jan 29)
+        now = datetime.now()
+        trace_day = get_trace_day(now - timedelta(hours=1))  # 1 hour ago was still "yesterday"
 
-        logger.info(f"Daily job triggered for {yesterday.strftime('%Y-%m-%d')}")
+        logger.info(f"Daily job triggered for Trace day {trace_day.strftime('%Y-%m-%d')}")
 
-        job_id = self.executor.create_pending_job(yesterday)
+        # Convert trace_day (date) to datetime for create_pending_job
+        trace_day_dt = datetime(trace_day.year, trace_day.month, trace_day.day)
+        job_id = self.executor.create_pending_job(trace_day_dt)
         result = self.executor.execute_job(job_id)
 
         if self.on_job_complete:

@@ -12,15 +12,22 @@ Directory structure:
     ├── db/trace.sqlite            # SQLite database (source of truth)
     ├── index/                     # Vector embeddings (if not in SQLite)
     └── cache/                     # Temporary, deleted daily after revision
-        ├── screenshots/YYYYMMDD/
+        ├── screenshots/YYYYMMDD/  # YYYYMMDD is "Trace day", not calendar day
         ├── text_buffers/YYYYMMDD/
         └── ocr/YYYYMMDD/
+
+"Trace day" concept:
+    A Trace day runs from daily_revision_hour to daily_revision_hour the next day.
+    For example, if daily_revision_hour=8:
+    - "Jan 28 Trace day" = 8am Jan 28 to 8am Jan 29
+    - A screenshot at 7am Jan 29 belongs to "Jan 28 Trace day"
+    This ensures all activity before the daily revision is grouped together.
 """
 
 import logging
 import os
 import shutil
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -74,6 +81,79 @@ _REQUIRED_DIRS: tuple[Path, ...] = (
     TEXT_BUFFERS_CACHE_DIR,
     OCR_CACHE_DIR,
 )
+
+
+def get_daily_revision_hour() -> int:
+    """
+    Get the configured daily revision hour from settings.
+
+    Returns:
+        Hour (0-23) when daily revision runs. Defaults to 3 (3am).
+    """
+    try:
+        from src.core.config import get_capture_config
+
+        config = get_capture_config()
+        return config.get("daily_revision_hour", 3)
+    except Exception:
+        return 3  # Default to 3am if config not available
+
+
+def get_trace_day(dt: datetime | None = None, daily_revision_hour: int | None = None) -> date:
+    """
+    Get the "Trace day" for a given datetime.
+
+    A Trace day runs from daily_revision_hour to daily_revision_hour the next day.
+    For example, if daily_revision_hour=8:
+    - 9am Jan 28 → Trace day is Jan 28
+    - 7am Jan 29 → Trace day is Jan 28 (before 8am cutoff)
+    - 9am Jan 29 → Trace day is Jan 29
+
+    Args:
+        dt: The datetime to check. Defaults to now.
+        daily_revision_hour: Override the revision hour. Defaults to config value.
+
+    Returns:
+        The date representing the Trace day.
+    """
+    if dt is None:
+        dt = datetime.now()
+
+    if daily_revision_hour is None:
+        daily_revision_hour = get_daily_revision_hour()
+
+    # If current hour is before the revision hour, we're still in "yesterday's" Trace day
+    if dt.hour < daily_revision_hour:
+        return (dt - timedelta(days=1)).date()
+    else:
+        return dt.date()
+
+
+def get_trace_day_range(
+    trace_day: date, daily_revision_hour: int | None = None
+) -> tuple[datetime, datetime]:
+    """
+    Get the datetime range for a Trace day.
+
+    Args:
+        trace_day: The Trace day date
+        daily_revision_hour: Override the revision hour. Defaults to config value.
+
+    Returns:
+        Tuple of (start_datetime, end_datetime) for the Trace day.
+        Start is inclusive, end is exclusive.
+    """
+    if daily_revision_hour is None:
+        daily_revision_hour = get_daily_revision_hour()
+
+    # Trace day starts at daily_revision_hour on that date
+    start = datetime(trace_day.year, trace_day.month, trace_day.day, daily_revision_hour)
+
+    # Trace day ends at daily_revision_hour the next calendar day
+    next_day = trace_day + timedelta(days=1)
+    end = datetime(next_day.year, next_day.month, next_day.day, daily_revision_hour)
+
+    return (start, end)
 
 
 def ensure_data_directories() -> dict[str, bool]:
@@ -142,23 +222,28 @@ def get_note_path(dt: datetime | date, note_type: str = "hour") -> Path:
 
 def get_daily_cache_dirs(dt: datetime | date | None = None) -> dict[str, Path]:
     """
-    Get the cache directory paths for a specific date.
+    Get the cache directory paths for a specific Trace day.
 
-    Cache directories are organized by date (YYYYMMDD) to enable
-    easy cleanup after daily revision.
+    Cache directories are organized by Trace day (YYYYMMDD) to enable
+    easy cleanup after daily revision. The Trace day is determined by
+    the daily_revision_hour setting.
 
     Args:
-        dt: The datetime or date. Defaults to today.
+        dt: The datetime or date. Defaults to now.
+            If datetime, uses get_trace_day() to determine the Trace day.
+            If date, uses that date directly as the Trace day.
 
     Returns:
         Dictionary with 'screenshots', 'text_buffers', and 'ocr' paths
     """
     if dt is None:
-        dt = date.today()
+        trace_day = get_trace_day(datetime.now())
     elif isinstance(dt, datetime):
-        dt = dt.date()
+        trace_day = get_trace_day(dt)
+    else:
+        trace_day = dt  # Assume it's already the Trace day date
 
-    date_str = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}"
+    date_str = f"{trace_day.year:04d}{trace_day.month:02d}{trace_day.day:02d}"
 
     return {
         "screenshots": SCREENSHOTS_CACHE_DIR / date_str,
@@ -171,8 +256,13 @@ def get_hourly_screenshot_dir(dt: datetime | None = None) -> Path:
     """
     Get the screenshot directory path for a specific hour.
 
-    Screenshots are organized by date and hour (YYYYMMDD/HH) to enable
-    cleanup after each hourly note is created.
+    Screenshots are organized by Trace day and hour (YYYYMMDD/HH) to enable
+    cleanup after each hourly note is created. The Trace day is determined
+    by the daily_revision_hour setting.
+
+    For example, if daily_revision_hour=8:
+    - 9am Jan 28 → saved to 20260128/09/
+    - 7am Jan 29 → saved to 20260128/07/ (still Jan 28's Trace day)
 
     Args:
         dt: The datetime. Defaults to now.
@@ -183,7 +273,10 @@ def get_hourly_screenshot_dir(dt: datetime | None = None) -> Path:
     if dt is None:
         dt = datetime.now()
 
-    date_str = f"{dt.year:04d}{dt.month:02d}{dt.day:02d}"
+    # Get the Trace day for this datetime
+    trace_day = get_trace_day(dt)
+
+    date_str = f"{trace_day.year:04d}{trace_day.month:02d}{trace_day.day:02d}"
     hour_str = f"{dt.hour:02d}"
 
     return SCREENSHOTS_CACHE_DIR / date_str / hour_str

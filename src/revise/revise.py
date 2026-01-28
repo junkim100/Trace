@@ -372,33 +372,39 @@ def load_hourly_notes_for_day(
     db_path: Path | str | None = None,
 ) -> list[dict]:
     """
-    Load all hourly notes for a day from the database.
+    Load all hourly notes for a Trace day from the database.
+
+    A Trace day runs from daily_revision_hour to daily_revision_hour the next day.
+    For example, if daily_revision_hour=8:
+    - "Jan 28 Trace day" = 8am Jan 28 to 8am Jan 29
 
     Utility function for building the daily revision prompt.
 
     Args:
-        day: The day to load notes for
+        day: The Trace day to load notes for (uses date portion)
         db_path: Path to SQLite database
 
     Returns:
         List of note dicts suitable for daily revision prompt
     """
+    from src.core.paths import get_trace_day_range
+
     db_path = Path(db_path) if db_path else DB_PATH
 
     conn = get_connection(db_path)
     try:
         cursor = conn.cursor()
 
-        # Calculate day boundaries
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+        # Calculate Trace day boundaries
+        trace_day = day.date() if isinstance(day, datetime) else day
+        day_start, day_end = get_trace_day_range(trace_day)
 
         cursor.execute(
             """
             SELECT note_id, start_ts, file_path, json_payload
             FROM notes
             WHERE note_type = 'hour'
-            AND start_ts >= ? AND start_ts <= ?
+            AND start_ts >= ? AND start_ts < ?
             ORDER BY start_ts
             """,
             (day_start.isoformat(), day_end.isoformat()),

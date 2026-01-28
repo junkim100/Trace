@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from src.core.paths import DB_PATH, get_all_screenshot_hours
+from src.core.paths import DB_PATH, get_all_screenshot_hours, get_trace_day
 from src.db.migrations import get_connection
 from src.memory.memory import is_memory_empty, populate_memory_from_notes
 from src.platform.notifications import send_backfill_notification, send_error_notification
@@ -665,30 +665,39 @@ class DailyBackfillDetector:
 
     def find_missing_days(self) -> list[datetime]:
         """
-        Find all days with hourly notes but no daily note.
+        Find all Trace days with hourly notes but no daily note.
+
+        A Trace day runs from daily_revision_hour to daily_revision_hour the next day.
+        For example, if daily_revision_hour=8:
+        - "Jan 28 Trace day" = 8am Jan 28 to 8am Jan 29
+        - A note with start_ts 7am Jan 29 belongs to Jan 28 Trace day
 
         Returns:
-            List of days that need daily backfilling (oldest first)
+            List of Trace days that need daily backfilling (oldest first)
         """
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Get current Trace day (don't backfill current day - still accumulating)
+        current_trace_day = get_trace_day(datetime.now())
         missing = []
 
         conn = get_connection(self.db_path)
         try:
             cursor = conn.cursor()
 
-            # Find all days that have hourly notes
+            # Find all hourly notes and their Trace days
             cursor.execute(
                 """
-                SELECT DISTINCT date(start_ts) as day_date
+                SELECT start_ts
                 FROM notes
                 WHERE note_type = 'hour'
-                AND date(start_ts) < date(?)
-                ORDER BY day_date
-                """,
-                (today.isoformat(),),
+                ORDER BY start_ts
+                """
             )
-            days_with_hourly_notes = {row[0] for row in cursor.fetchall()}
+            trace_days_with_hourly_notes = set()
+            for row in cursor.fetchall():
+                start_ts = datetime.fromisoformat(row[0])
+                trace_day = get_trace_day(start_ts)
+                if trace_day < current_trace_day:
+                    trace_days_with_hourly_notes.add(trace_day.isoformat())
 
             # Find all days that have daily notes
             cursor.execute(
@@ -712,7 +721,7 @@ class DailyBackfillDetector:
             days_already_processed = {row[0] for row in cursor.fetchall()}
 
             # Find missing days: have hourly notes but no daily note and not processed
-            for day_str in sorted(days_with_hourly_notes):
+            for day_str in sorted(trace_days_with_hourly_notes):
                 if day_str in days_with_daily_notes:
                     continue
                 if day_str in days_already_processed:
@@ -732,11 +741,8 @@ class DailyBackfillDetector:
 
                 try:
                     day = datetime.strptime(day_str, "%Y-%m-%d")
-                    # Don't backfill today (not complete yet)
-                    if day >= today:
-                        continue
                     missing.append(day)
-                    logger.debug(f"Found missing daily note for: {day_str}")
+                    logger.debug(f"Found missing daily note for Trace day: {day_str}")
                 except ValueError:
                     continue
 
