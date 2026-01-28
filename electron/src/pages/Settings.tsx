@@ -914,73 +914,90 @@ export function Settings() {
                     }}
                     style={{ color: 'var(--accent)' }}
                   >
-                    Get a free key at tavily.com
+                    Get a free key
                   </a>
                   {' '}(1,000 free searches/month)
                 </p>
-                {hasTavilyKey ? (
-                  <div style={styles.tavilyConfigured}>
-                    <div style={styles.keyConfigured}>
-                      <span style={styles.keyStatus}>✓ Web search enabled</span>
+
+                {/* Status indicator - consistent with OpenAI section */}
+                <div style={styles.apiKeyStatus}>
+                  {hasTavilyKey ? (
+                    <>
+                      <span style={styles.apiKeyStatusSet}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                        Web search enabled
+                      </span>
                       <button
                         onClick={handleClearTavilyKey}
                         style={styles.clearButton}
+                        type="button"
                       >
-                        Clear Key
+                        Clear
                       </button>
+                    </>
+                  ) : (
+                    <span style={styles.apiKeyStatusOptional}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                      Not configured (optional)
+                    </span>
+                  )}
+                </div>
+
+                {/* Usage stats when key is set */}
+                {hasTavilyKey && tavilyUsage && (
+                  <div style={styles.usageStatsBox}>
+                    <div style={styles.usageBar}>
+                      <div
+                        style={{
+                          ...styles.usageBarFill,
+                          width: `${Math.min(tavilyUsage.percentage, 100)}%`,
+                          backgroundColor: tavilyUsage.warning
+                            ? tavilyUsage.auto_disabled
+                              ? '#ff3b30'
+                              : '#ff9500'
+                            : 'var(--accent)',
+                        }}
+                      />
                     </div>
-                    {tavilyUsage && (
-                      <div style={styles.usageStats}>
-                        <div style={styles.usageBar}>
-                          <div
-                            style={{
-                              ...styles.usageBarFill,
-                              width: `${Math.min(tavilyUsage.percentage, 100)}%`,
-                              backgroundColor: tavilyUsage.warning
-                                ? tavilyUsage.auto_disabled
-                                  ? '#ff3b30'
-                                  : '#ff9500'
-                                : 'var(--accent)',
-                            }}
-                          />
-                        </div>
-                        <div style={styles.usageText}>
-                          <span>
-                            {tavilyUsage.count} / {tavilyUsage.limit} searches this month
-                          </span>
-                          <span style={{ color: 'var(--text-secondary)' }}>
-                            {tavilyUsage.remaining} remaining
-                          </span>
-                        </div>
-                        {tavilyUsage.warning && (
-                          <p style={{
-                            ...styles.tavilyNote,
-                            color: tavilyUsage.auto_disabled ? '#ff3b30' : '#ff9500',
-                            marginTop: '0.5rem',
-                          }}>
-                            {tavilyUsage.auto_disabled
-                              ? '⚠️ Auto web search disabled (95% limit). Manual "search the web" still works.'
-                              : '⚠️ Approaching monthly limit (80%)'}
-                          </p>
-                        )}
-                      </div>
+                    <div style={styles.usageText}>
+                      <span>{tavilyUsage.count} / {tavilyUsage.limit} searches this month</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{tavilyUsage.remaining} remaining</span>
+                    </div>
+                    {tavilyUsage.warning && (
+                      <p style={{
+                        ...styles.usageWarning,
+                        color: tavilyUsage.auto_disabled ? '#ff3b30' : '#ff9500',
+                      }}>
+                        {tavilyUsage.auto_disabled
+                          ? '⚠️ Auto web search disabled (95% limit). Explicit requests still work.'
+                          : '⚠️ Approaching monthly limit (80%)'}
+                      </p>
                     )}
                   </div>
-                ) : (
-                  <div style={styles.inputGroup}>
+                )}
+
+                {/* Input for new key - only show when not set */}
+                {!hasTavilyKey && (
+                  <div style={styles.inputRow}>
                     <input
                       type="password"
                       value={tavilyApiKey}
                       onChange={(e) => setTavilyApiKey(e.target.value)}
-                      placeholder="tvly-..."
+                      placeholder="Enter API key (tvly-...)"
                       style={styles.input}
                     />
                     <button
                       onClick={handleSaveTavilyKey}
                       disabled={!tavilyApiKey.trim() || saving}
                       style={{
-                        ...styles.button,
-                        ...((!tavilyApiKey.trim() || saving) ? styles.buttonDisabled : {}),
+                        ...styles.saveButton,
+                        ...(!tavilyApiKey.trim() || saving ? styles.saveButtonDisabled : {}),
                       }}
                     >
                       {saving ? 'Saving...' : 'Save'}
@@ -1798,6 +1815,20 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.8rem',
     color: 'var(--text-primary)',
   },
+  usageStatsBox: {
+    backgroundColor: 'var(--bg-tertiary)',
+    borderRadius: '8px',
+    padding: '0.75rem 1rem',
+    marginBottom: '0.75rem',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '0.5rem',
+  },
+  usageWarning: {
+    fontSize: '0.8rem',
+    margin: 0,
+    fontWeight: 500,
+  },
   inputRow: {
     display: 'flex',
     gap: '0.5rem',
@@ -2244,6 +2275,14 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '0.5rem',
     color: '#ff9500',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+  },
+  apiKeyStatusOptional: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    color: 'var(--text-secondary)',
     fontSize: '0.9rem',
     fontWeight: 500,
   },

@@ -25,6 +25,22 @@ function ChatContent() {
   const [customEnd, setCustomEnd] = useState<string>();
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [lastResponse, setLastResponse] = useState<ConversationSendResponse | null>(null);
+  const [apiKeyMissing, setApiKeyMissing] = useState<boolean>(false);
+
+  // Check for API key on mount
+  useEffect(() => {
+    const checkApiKey = async () => {
+      try {
+        const settings = await window.traceAPI?.settings?.get();
+        if (!settings?.has_api_key) {
+          setApiKeyMissing(true);
+        }
+      } catch (err) {
+        console.error('Failed to check API key:', err);
+      }
+    };
+    checkApiKey();
+  }, []);
 
   const handleQuery = useCallback(async (query: string) => {
     clearError();
@@ -143,6 +159,31 @@ function ChatContent() {
             </div>
           )}
 
+          {/* API key missing warning */}
+          {apiKeyMissing && (
+            <div style={styles.apiKeyWarning}>
+              <div style={styles.apiKeyWarningContent}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <div>
+                  <strong>OpenAI API Key Required</strong>
+                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
+                    Add your API key in Settings to start chatting.
+                  </p>
+                </div>
+                <button
+                  onClick={() => navigate('/settings')}
+                  style={styles.apiKeyWarningButton}
+                >
+                  Open Settings
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Chat input with time filter */}
           <div style={styles.inputArea}>
             <div style={styles.inputRow}>
@@ -156,11 +197,13 @@ function ChatContent() {
             </div>
             <ChatInput
               onSubmit={handleQuery}
-              disabled={sending}
+              disabled={sending || apiKeyMissing}
               placeholder={
-                currentConversation
-                  ? "Continue the conversation..."
-                  : "Ask about your activity..."
+                apiKeyMissing
+                  ? "Add OpenAI API key in Settings to chat"
+                  : currentConversation
+                    ? "Continue the conversation..."
+                    : "Ask about your activity..."
               }
             />
           </div>
@@ -284,6 +327,31 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '0.25rem',
     display: 'flex',
     alignItems: 'center',
+  },
+  apiKeyWarning: {
+    margin: '0 1rem 0.5rem',
+    padding: '1rem',
+    backgroundColor: 'rgba(255, 149, 0, 0.1)',
+    border: '1px solid rgba(255, 149, 0, 0.3)',
+    borderRadius: '8px',
+  },
+  apiKeyWarningContent: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    color: '#ff9500',
+  },
+  apiKeyWarningButton: {
+    marginLeft: 'auto',
+    padding: '0.5rem 1rem',
+    backgroundColor: 'var(--accent)',
+    border: 'none',
+    borderRadius: '6px',
+    color: 'white',
+    fontSize: '0.85rem',
+    fontWeight: 500,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
   },
   inputArea: {
     padding: '0.75rem 1.5rem 1.5rem',

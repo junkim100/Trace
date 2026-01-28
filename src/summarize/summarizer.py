@@ -215,7 +215,14 @@ class HourlySummarizer:
         is_empty_summary = not summary.summary.strip() or any(
             indicator in summary_lower for indicator in empty_summary_indicators
         )
-        if is_empty_summary and not force:
+
+        # Check if there's meaningful app usage - if so, create note even with empty summary
+        # This captures hours where user was active (e.g., terminal usage) but LLM couldn't
+        # extract rich content from screenshots. App usage data is still valuable.
+        total_app_time = sum(evidence.app_durations.values()) if evidence.app_durations else 0
+        has_meaningful_app_usage = total_app_time >= 600  # 10+ minutes of app usage
+
+        if is_empty_summary and not force and not has_meaningful_app_usage:
             logger.info(
                 f"Empty/placeholder summary for {hour_start.isoformat()}, skipping note creation"
             )
@@ -237,6 +244,11 @@ class HourlySummarizer:
                 keyframes_count=len(keyframes),
                 skipped_idle=True,
                 idle_reason="Empty or placeholder summary",
+            )
+        elif is_empty_summary and has_meaningful_app_usage:
+            logger.info(
+                f"Empty summary but {total_app_time // 60}m of app usage detected - "
+                f"creating note with app usage data"
             )
         elif is_empty_summary and force:
             logger.info("Empty summary detected but force=True, creating note anyway")

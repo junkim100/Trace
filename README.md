@@ -1,403 +1,226 @@
 # Trace
 
-**A second brain built from your digital activity.**
+**Your second brain for everything you do on your Mac.**
 
-Trace is a macOS application that continuously observes your digital activity, converts it into durable Markdown notes using AI, stores typed relationships in a local knowledge graph, and enables time-aware chat and search over your past.
+Trace silently watches your digital activity and builds a searchable, AI-powered memory of your entire computing life. Ask questions about your past in plain English and get instant, accurate answers.
+
+> *"What was that article I was reading last week about machine learning?"*
+> *"When did I last work on the React project?"*
+> *"What music was I listening to while coding yesterday?"*
+
+---
+
+## Why Trace?
+
+We forget **90% of what we do** on our computers within days. Important research, fleeting ideas, useful websites—all lost to the void of browser history and scattered files.
+
+Trace changes that. It's like having a **perfect memory** for your digital life.
+
+---
+
+## Key Features
+
+### Ask Your Past
+Chat with your computer history using natural language. Trace understands context, time, and relationships between your activities.
+
+```
+You: What was I working on last Tuesday afternoon?
+
+Trace: Last Tuesday (Jan 21) from 2-6 PM, you were primarily working on
+the authentication system refactor. You had VS Code open with the auth/
+directory, referenced the OAuth 2.0 documentation on oauth.net, and were
+listening to the "Deep Focus" playlist on Spotify. [1][2][3]
+```
+
+### Automatic Note-Taking
+Every hour, Trace generates a structured summary of your activity—what apps you used, what you worked on, what you learned. No manual input required.
+
+### Knowledge Graph
+Trace connects everything: projects link to documents, people link to conversations, topics link to learning sessions. Query relationships like *"What was I researching when I talked to Sarah?"*
+
+### Web-Augmented Answers
+When you ask about something that's evolved since you last looked at it, Trace automatically searches the web to give you current context alongside your past activity.
+
+```
+You: What's new with that Rust framework I was learning last year?
+
+Trace: You were learning Axum in March 2024, working through their official
+tutorial. Since then, Axum 0.7 was released with improved error handling
+and a new middleware system. [Notes: 1,2] [Web: 3,4]
+```
+
+### Smart Citations
+Every answer includes clickable citations back to your original notes, so you can verify and dive deeper.
+
+---
+
+## 100% Private
+
+**Your data never leaves your computer.** Period.
+
+| What Happens | Where |
+|--------------|-------|
+| Screenshots captured | Stored locally, deleted after processing |
+| Activity analyzed | Processed by AI, then raw data deleted |
+| Notes and graph | Stored locally forever |
+| Chat queries | Sent to AI, no data retained by providers |
+
+- **No cloud sync** — Everything lives in `~/Library/Application Support/Trace/`
+- **No accounts** — Just install and use
+- **No tracking** — We don't even have analytics
+- **Open source** — Verify it yourself
+
+The only external communication is with OpenAI's API for AI processing. Your data is processed and immediately discarded by their API—nothing is stored or used for training.
 
 ---
 
 ## How It Works
 
 ```
-Your Activity                    AI Processing                    Your Knowledge
-─────────────────────────────────────────────────────────────────────────────────
-
-Screenshots          ─┐
-Active apps          ─┤                                   ┌─ Markdown Notes
-Window titles        ─┼──▶  Hourly Summarization  ──▶     ├─ Entity Graph
-Browser URLs         ─┤     (Vision LLM)                  ├─ Vector Embeddings
-Now playing music    ─┤                                   └─ Searchable Index
-Location             ─┘
-        │                           │
-        │ (every 1 second)          │ (every hour)
-        ▼                           ▼
-   Raw Capture               Daily Revision
-   (temporary)               (Context + Normalization)
-                                    │
-                                    ▼
-                              Chat Interface
-                              (Query your past)
+Every Second              Every Hour                Your Knowledge
+─────────────────────────────────────────────────────────────────
+Screenshots    ─┐                               ┌─ Searchable Notes
+Active apps    ─┤        AI Vision              ├─ Knowledge Graph
+URLs & tabs    ─┼──▶     Summarization    ──▶   ├─ Semantic Index
+Music playing  ─┤        + Daily Revision       └─ Chat Interface
+Location*      ─┘
 ```
 
-### The Pipeline
+1. **Capture** — Screenshots and metadata collected every second
+2. **Summarize** — AI analyzes activity each hour, creates structured notes
+3. **Connect** — Daily revision builds relationships between entities
+4. **Query** — Chat interface with time-aware, cited answers
 
-1. **Capture** (every 1 second)
-   - Multi-monitor screenshots (deduplicated, capped at 1080p)
-   - Foreground app and window metadata
-   - Browser URLs (Safari, Chrome)
-   - Now playing (Spotify, Apple Music)
-   - Location snapshots
-
-2. **Hourly Summarization** (every hour)
-   - AI triages screenshots to select important keyframes
-   - Vision LLM analyzes keyframes + activity data
-   - Generates structured summary with entities, topics, activities
-   - Computes embeddings for semantic search
-
-3. **Daily Revision** (once per day at 3 AM)
-   - Reviews all hourly notes with full-day context
-   - Normalizes entity names (e.g., "VSCode" + "VS Code" → "Visual Studio Code")
-   - Builds relationship graph between entities
-   - Deletes raw artifacts after successful processing
-
-4. **Chat Interface**
-   - Query your past activity with natural language
-   - AI-powered answers with citations to specific notes
-   - Time filtering, topic search, graph traversal
+*Location requires Apple Developer signing. See [Limitations](#limitations).*
 
 ---
 
-## Features
+## Quick Start
 
-- **Automatic Capture** - Screenshots, apps, URLs, music, location tracked continuously
-- **AI-Powered Notes** - Vision LLM converts activity into structured Markdown
-- **Knowledge Graph** - Entities connected with typed relationships (ABOUT_TOPIC, LISTENED_TO, etc.)
-- **Semantic Search** - Find notes by meaning, not just keywords
-- **Time-Aware Chat** - "What was I working on last Tuesday?" with grounded answers
-- **Privacy-First** - All data stays local, raw screenshots deleted daily
+### Install via Homebrew (Recommended)
+
+```bash
+brew tap junkim100/trace https://github.com/junkim100/Trace.git --custom-remote
+brew install --cask trace
+```
+
+### Or Download Manually
+
+1. Download from [Releases](https://github.com/junkim100/Trace/releases)
+2. Drag to Applications
+3. Run: `xattr -cr /Applications/Trace.app`
+4. Open Trace
+
+### First Launch
+
+1. Grant **Screen Recording** and **Accessibility** permissions when prompted
+2. Add your [OpenAI API key](https://platform.openai.com/api-keys) in Settings
+3. Start using your computer—Trace handles the rest
+
+**Cost**: ~$0.20/day or ~$6/month for typical use
 
 ---
 
 ## Requirements
 
 - macOS 12.0+ (Monterey or later)
-- OpenAI API key ([get one here](https://platform.openai.com/api-keys))
+- OpenAI API key
+- ~500MB disk space
 
-### Permissions Required
+### Permissions
 
 | Permission | Purpose | Required |
 |------------|---------|----------|
-| Screen Recording | Capture screenshots | Yes |
-| Accessibility | Read window titles and active app | Yes |
-| Location Services | Add location context to notes | No (optional)* |
-| Automation | Read browser URLs from Safari/Chrome | No (optional) |
-
-\* *Location Services requires a signed app. See [Limitations](#limitations) for details.*
+| Screen Recording | Capture what's on screen | Yes |
+| Accessibility | Detect active apps and windows | Yes |
+| Location Services | Add location to notes | Optional* |
+| Automation | Read browser URLs | Optional |
 
 ---
 
-## Installation
+## Limitations
 
-### Option 1: Homebrew (Recommended)
+### Location Services
+macOS requires a $99/year Apple Developer certificate for Location Services. Without it, location tracking won't work. Everything else functions normally.
 
-The easiest way to install Trace. Homebrew automatically handles the macOS security restrictions.
-
-```bash
-# Add the tap and install
-brew tap junkim100/trace https://github.com/junkim100/Trace.git --custom-remote
-brew install --cask trace
-```
-
-Or install directly:
-```bash
-brew install --cask junkim100/trace/trace
-```
-
-To update:
-```bash
-brew upgrade --cask trace
-```
-
-### Option 2: Manual Download
-
-1. **Download** the latest `.dmg` from [GitHub Releases](https://github.com/junkim100/Trace/releases):
-   - **Apple Silicon** (M1/M2/M3/M4): `Trace-x.x.x-arm64.dmg`
-   - **Intel Macs**: `Trace-x.x.x.dmg`
-
-2. **Install** - Open the DMG and drag Trace to your Applications folder
-
-3. **Remove Quarantine** - Run this command in Terminal:
-   ```bash
-   xattr -cr /Applications/Trace.app
-   ```
-   > **Why is this needed?** macOS marks apps downloaded from the internet as "quarantined". Since Trace isn't signed with an Apple Developer certificate ($99/year), macOS shows a "damaged" error. This command removes that flag.
-
-4. **Open Trace** from Applications
-
-### After Installation
-
-1. **Grant Permissions** when prompted:
-   - **Screen Recording** - Required for capturing screenshots
-   - **Accessibility** - Required for detecting active apps/windows
-   - **Location Services** - Optional (note: requires signed app to work)
-
-2. **Configure** - Open Settings (`Cmd+,`) and set your OpenAI API key
+If you'd like this feature, consider [supporting the project](#support-the-project).
 
 ---
 
 ## Troubleshooting
 
 ### "Trace is damaged and can't be opened"
-
-This happens because the app isn't signed with an Apple Developer certificate. Run:
-
 ```bash
 xattr -cr /Applications/Trace.app
 ```
 
-Then open Trace again. If you installed via Homebrew, this is done automatically.
-
 ### Permissions not working
-
-1. Quit Trace completely (`Cmd+Q`)
-2. Go to **System Settings → Privacy & Security**
-3. Find and remove Trace from the relevant permission list
-4. Reopen Trace and grant permissions again
-
-### App won't start
-
-Check the logs:
-```bash
-cat ~/Library/Application\ Support/Trace/logs/*.log
-```
-
-### Screen Recording permission keeps turning off
-
-After granting Screen Recording permission, you may need to restart Trace for it to take effect.
-
----
-
-## Development Setup
-
-> For contributors and developers only. Regular users should use the [Download](#download) section above.
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- [uv](https://github.com/astral-sh/uv) package manager
-
-```bash
-# Install uv (Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Clone the repository
-git clone https://github.com/junkim100/Trace.git
-cd Trace
-
-# Install Python dependencies
-uv sync
-
-# Install Node.js dependencies
-cd electron && npm install
-```
-
-### Running in Development
-
-```bash
-# Start the Electron app (includes Python backend)
-cd electron && npm start
-
-# Or run Python backend separately
-uv run python -m src.trace_app.cli serve
-```
-
-### Building for Distribution
-
-```bash
-# Build Python backend with PyInstaller
-./build-python.sh
-
-# Build Electron app
-cd electron && npm run build && npx electron-builder --mac
-```
-
----
-
-## Architecture
-
-### Components
-
-| Component | Description | Location |
-|-----------|-------------|----------|
-| **Capture Daemon** | Collects activity data every second | `src/capture/` |
-| **Evidence Builder** | Extracts text via OCR and PDF parsing | `src/evidence/` |
-| **Hourly Summarizer** | Generates hourly notes with Vision LLM | `src/summarize/` |
-| **Daily Reviser** | Adds context, normalizes entities, builds graph | `src/revise/` |
-| **Job Scheduler** | Manages hourly/daily processing jobs | `src/jobs/` |
-| **Chat API** | Handles queries with retrieval + synthesis | `src/chat/` |
-| **Service Manager** | Orchestrates all background services | `src/core/services.py` |
-| **Electron Frontend** | Desktop UI with chat interface | `electron/` |
-
-### Data Storage
-
-All data is stored locally in `~/Library/Application Support/Trace/`:
-
-```
-~/Library/Application Support/Trace/
-├── notes/YYYY/MM/DD/           # Durable Markdown notes
-│   ├── hour-YYYYMMDD-HH.md     # Hourly summaries
-│   └── day-YYYYMMDD.md         # Daily summaries
-├── db/trace.sqlite             # Metadata, entities, graph, embeddings
-├── cache/                      # Temporary (deleted daily)
-│   ├── screenshots/            # Raw screenshots
-│   ├── text_buffers/           # Extracted text
-│   └── ocr/                    # OCR results
-├── logs/                       # Application logs
-└── index/                      # Vector index (if external)
-```
-
-### LLM Models Used
-
-| Task | Model | Purpose |
-|------|-------|---------|
-| Frame Triage | gpt-5-nano-2025-08-07 | Score screenshot importance (heuristic by default) |
-| OCR | gpt-5-nano-2025-08-07 | Extract text from document screenshots |
-| Hourly Summary | gpt-5-mini-2025-08-07 | Generate activity summaries with vision |
-| Daily Revision | gpt-5.2-2025-12-11 | Add context, normalize entities, build graph |
-| Query Planning | gpt-4o | Decompose complex queries |
-| Answer Synthesis | gpt-5.2-2025-12-11 | Generate cited answers |
-| Embeddings | text-embedding-3-small | Semantic search vectors (1536 dims) |
-
-### Expected API Cost
-
-For a typical day with **10 hours of screen time**:
-
-| Stage | API Calls | Est. Cost |
-|-------|-----------|-----------|
-| Hourly Summarization | 10 (1 per hour) | ~$0.15 |
-| Daily Revision | 1 | ~$0.05 |
-| Embeddings | 11 | ~$0.00 |
-| OCR (document detection) | ~5 | ~$0.001 |
-| **Total per day** | | **~$0.20** |
-
-**Monthly estimate**: ~$6/month for regular daily use
-
-Cost factors:
-- More screen time → +$0.015/hour
-- Heavy document reading → +$0.001/document
-- Chat queries → ~$0.001-0.005/query
-
----
-
-## Documentation
-
-- **[Architecture Overview](docs/architecture.md)** - System design and components
-- **[LLM Pipeline](docs/llm-pipeline.md)** - AI models, prompts, and inputs
-- **[Data Flow](docs/data-flow.md)** - How data moves through the system
-- **[Database Schema](docs/database.md)** - Tables and relationships
-- **[API Reference](docs/api.md)** - Chat and retrieval APIs
+1. Quit Trace (`Cmd+Q`)
+2. System Settings → Privacy & Security → Remove Trace
+3. Reopen and grant permissions again
 
 ---
 
 ## Development
 
-### Project Structure
-
-```
-src/
-├── capture/        # Activity capture (screenshots, apps, URLs, music)
-├── evidence/       # Text extraction (OCR, PDF)
-├── summarize/      # Hourly summarization with Vision LLM
-├── revise/         # Daily revision and entity normalization
-├── jobs/           # Job scheduling (hourly, daily, backfill)
-├── chat/           # Chat interface and query handling
-│   └── agentic/    # Multi-step query planning
-├── retrieval/      # Search (vector, graph, hierarchical)
-├── graph/          # Edge building and traversal
-├── db/             # Database operations
-├── core/           # Service management, paths, utilities
-└── platform/       # macOS-specific (notifications, sleep/wake)
-```
-
-### Running Tests
+### Prerequisites
+- Python 3.11+, Node.js 18+, [uv](https://github.com/astral-sh/uv)
 
 ```bash
-uv run pytest tests/
+git clone https://github.com/junkim100/Trace.git && cd Trace
+uv sync
+cd electron && npm install
+npm start
 ```
 
-### Linting
-
+### Building
 ```bash
-uv run ruff check --fix src/
-uv run ruff format src/
-```
-
-### CLI Commands
-
-```bash
-# Start all services (capture, scheduler)
-uv run python -m src.trace_app.cli serve
-
-# Check service status
-uv run python -m src.core.services status
-
-# Manual hourly summarization
-uv run python -m src.jobs.hourly trigger --hour "2024-01-15 14:00"
-
-# Manual daily revision
-uv run python -m src.jobs.daily trigger --day "2024-01-15"
-
-# Chat query (CLI)
-uv run python -m src.chat.api chat "What did I work on yesterday?"
+./build-python.sh
+cd electron && npm run build && npx electron-builder --mac
 ```
 
 ---
 
-## Privacy & Security
+## Privacy Deep Dive
 
-- **Local-only**: All data stored on your machine
-- **No cloud sync**: Nothing sent to external servers (except OpenAI API calls)
-- **Ephemeral artifacts**: Raw screenshots deleted daily after processing
-- **Minimal retention**: Only structured notes and metadata kept long-term
-- **API calls**: Only summarization uses OpenAI; images sent with `detail: low` when possible
+Trace is designed with privacy as the **core architecture**, not an afterthought.
 
----
+### What's Stored Locally
+- **Markdown notes** — Human-readable summaries of your activity
+- **SQLite database** — Metadata, entities, relationships, embeddings
+- **Temporary cache** — Raw screenshots (auto-deleted daily)
 
-## Limitations
+### What's Sent to APIs
+- **Hourly**: Selected screenshots + activity metadata → OpenAI for summarization
+- **Chat**: Your question + relevant notes → OpenAI for answer generation
+- **Web search** (optional): Search queries → Tavily for augmentation
 
-### Location Services Unavailable
+### What's NOT Stored Anywhere
+- Raw screenshots (deleted after processing)
+- Keystroke data (never captured)
+- File contents (only names/paths)
+- Passwords or sensitive form data
 
-**Location Services cannot be enabled** in the current release. This is a macOS security restriction.
-
-macOS requires apps to be signed with an Apple Developer certificate ($99/year) for Location Services to work. Without code signing:
-- The Location Services toggle in System Settings will automatically turn off
-- This is not a bug - it's an Apple security policy for unsigned apps
-
-**What still works without Location Services:**
-- Screenshot capture
-- App and window tracking
-- Browser URL detection
-- Now playing music detection
-- All AI summarization features
-- Chat and search functionality
-
-If you'd like Location Services support, please consider [supporting the project](#support-the-project) to help fund an Apple Developer membership.
+### API Data Handling
+OpenAI's API doesn't retain data submitted via the API for model training. See their [data usage policy](https://openai.com/policies/api-data-usage-policies).
 
 ---
 
 ## Support the Project
 
-Trace is free and open source. If you find it useful, consider supporting its development!
+Trace is free and open source.
 
 <a href="https://www.buymeacoffee.com/junkim100" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
-### Funding Goals
-
-| Goal | Amount | Purpose |
-|------|--------|---------|
-| Apple Developer Program | $99/year | Enable Location Services and app notarization |
-
-Your support helps cover:
-- **Apple Developer membership** - Required for Location Services and removing security warnings
-- **Development time** - New features and improvements
-- **Infrastructure** - Testing across different macOS versions
+Your support helps fund:
+- **Apple Developer Program** ($99/year) — Enable Location Services
+- **Development time** — New features and improvements
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -409,6 +232,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Acknowledgments
 
-- Built with [OpenAI API](https://openai.com/api/)
-- Vector search via [sqlite-vec](https://github.com/asg017/sqlite-vec)
-- UI powered by [Electron](https://www.electronjs.org/) + [React](https://react.dev/)
+Built with [OpenAI API](https://openai.com/api/), [sqlite-vec](https://github.com/asg017/sqlite-vec), [Electron](https://www.electronjs.org/), and [React](https://react.dev/).
