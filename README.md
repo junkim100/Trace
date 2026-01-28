@@ -100,8 +100,13 @@ Location*      ─┘
 ### Install via Homebrew (Recommended)
 
 ```bash
-brew tap junkim100/trace https://github.com/junkim100/Trace.git --custom-remote
+brew tap junkim100/trace
 brew install --cask trace
+```
+
+Or in a single command:
+```bash
+brew install --cask junkim100/trace/trace
 ```
 
 ### Or Download Manually
