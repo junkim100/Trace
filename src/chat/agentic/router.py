@@ -254,6 +254,14 @@ class QueryRouter:
             if needs_web_search:
                 query_type = "web_augmented"
 
+            # If query type is web_augmented but tool wasn't called, trigger web search anyway
+            # This handles cases where the LLM returns web_augmented in JSON but doesn't call tool
+            if query_type == "web_augmented" and not needs_web_search:
+                needs_web_search = True
+                web_search_query = query  # Use original query as search query
+                web_search_reason = "Query classified as web_augmented"
+                logger.info("Auto-enabling web search for web_augmented query type")
+
             logger.info(
                 f"Router decision: type={query_type}, web_search={needs_web_search}, "
                 f"confidence={confidence:.2f}"

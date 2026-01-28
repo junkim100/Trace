@@ -144,6 +144,63 @@ def send_response(response: IPCResponse) -> None:
     sys.stdout.flush()
 
 
+def _compute_missing_embeddings(api_key: str) -> int:
+    """Compute embeddings for notes that don't have them.
+
+    Args:
+        api_key: OpenAI API key
+
+    Returns:
+        Number of embeddings computed
+    """
+    import json as json_module
+    from datetime import datetime
+
+    from src.core.paths import DB_PATH
+    from src.db.migrations import get_connection
+    from src.summarize.embeddings import EmbeddingComputer
+    from src.summarize.schemas import HourlySummarySchema
+
+    computer = EmbeddingComputer(api_key=api_key)
+    conn = get_connection(DB_PATH)
+    cursor = conn.cursor()
+
+    # Get notes without embeddings
+    cursor.execute("SELECT note_id, json_payload, start_ts FROM notes WHERE embedding_id IS NULL")
+    notes = cursor.fetchall()
+    conn.close()
+
+    if not notes:
+        return 0
+
+    logger.info(f"Computing embeddings for {len(notes)} notes...")
+    computed = 0
+
+    for note in notes:
+        try:
+            note_id = note["note_id"]
+            payload = json_module.loads(note["json_payload"]) if note["json_payload"] else {}
+            start_ts = datetime.fromisoformat(note["start_ts"])
+
+            # Create a minimal summary object
+            summary = HourlySummarySchema(
+                summary=payload.get("summary", ""),
+                categories=payload.get("categories", []),
+                activities=[],
+                learning=[],
+                entities=[],
+            )
+
+            result = computer.compute_for_note(note_id, summary, start_ts)
+            if result.success:
+                computed += 1
+        except Exception as e:
+            logger.warning(f"Failed to compute embedding for {note_id}: {e}")
+
+    logger.info(f"Computed {computed} embeddings")
+    return computed
+
+
 def run_server() -> None:
     """Run the IPC server, reading requests from stdin and writing responses to stdout.
 
@@ -176,6 +233,39 @@ def run_server() -> None:
     except Exception as e:
         logger.error(f"Failed to start services: {e}")
         _service_manager = None
+
+    # Auto-detect and reindex orphaned notes (notes on disk but not in database)
+    try:
+        from src.jobs.note_reindex import NoteReindexer
+
+        reindexer = NoteReindexer()
+        note_files = reindexer.find_note_files()
+
+        from src.core.paths import DB_PATH
+        from src.db.migrations import get_connection
+
+        conn = get_connection(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM notes")
+        db_count = cursor.fetchone()["count"]
+        conn.close()
+
+        if len(note_files) > db_count:
+            logger.info(
+                f"Detected orphaned notes: {len(note_files)} on disk, {db_count} in database. "
+                "Running auto-reindex..."
+            )
+            result = reindexer.reindex_all()
+            logger.info(f"Auto-reindex complete: {result.notes_indexed} notes indexed")
+
+            # Compute embeddings for notes that don't have them
+            from src.core.config import get_api_key
+
+            api_key = get_api_key()
+            if api_key:
+                _compute_missing_embeddings(api_key)
+    except Exception as e:
+        logger.warning(f"Note auto-reindex check failed: {e}")
 
     # Signal readiness to parent process
     ready_msg = {
