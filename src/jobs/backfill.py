@@ -463,6 +463,54 @@ class BackfillDetector:
             logger.warning(f"Note reindex check failed: {e}")
             return 0
 
+    def _cleanup_orphaned_db_records(self) -> int:
+        """
+        Remove database records for notes whose files no longer exist.
+
+        This handles cases where note files were manually deleted but
+        the database records remain (stale references).
+
+        Returns:
+            Number of orphaned records cleaned up
+        """
+        conn = get_connection(self.db_path)
+        cleaned = 0
+
+        try:
+            cursor = conn.cursor()
+
+            # Find notes in DB
+            cursor.execute("SELECT note_id, file_path FROM notes")
+            notes = cursor.fetchall()
+
+            orphaned_ids = []
+            for note in notes:
+                file_path = note["file_path"]
+                if file_path and not Path(file_path).exists():
+                    orphaned_ids.append(note["note_id"])
+                    logger.info(f"Found orphaned DB record: {file_path}")
+
+            if orphaned_ids:
+                for note_id in orphaned_ids:
+                    cursor.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
+                    cursor.execute("DELETE FROM note_entities WHERE note_id = ?", (note_id,))
+                    cursor.execute(
+                        "DELETE FROM embeddings WHERE source_type = 'note' AND source_id = ?",
+                        (note_id,),
+                    )
+                    cleaned += 1
+
+                conn.commit()
+                logger.info(f"Cleaned up {cleaned} orphaned database records")
+
+        except Exception as e:
+            logger.error(f"Error cleaning orphaned DB records: {e}")
+            conn.rollback()
+        finally:
+            conn.close()
+
+        return cleaned
+
     def _compute_missing_embeddings(self, api_key: str) -> int:
         """
         Compute embeddings for notes that don't have them.
@@ -726,8 +774,9 @@ class BackfillDetector:
         """
         Convenience method to find and backfill missing hours.
 
-        Also reindexes any orphaned notes (notes on disk but not in database).
-        This handles manually added notes and database resets.
+        Also syncs filesystem with database:
+        - Reindexes orphaned notes (notes on disk but not in database)
+        - Cleans up orphaned DB records (records in DB but files deleted)
 
         Args:
             notify: Whether to send macOS notifications
@@ -736,8 +785,9 @@ class BackfillDetector:
         Returns:
             BackfillResult with statistics
         """
-        # First, reindex any orphaned notes from disk
+        # First, sync filesystem with database
         self._reindex_orphaned_notes()
+        self._cleanup_orphaned_db_records()
 
         if force:
             # Force mode: find ALL hours with activity (ignore job status)

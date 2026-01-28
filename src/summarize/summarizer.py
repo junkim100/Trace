@@ -254,6 +254,25 @@ class HourlySummarizer:
         elif summary.is_idle and force:
             logger.info("Idle detected but force=True, creating note anyway")
 
+        # Step 3e: Final content validation - catch empty notes that slipped through
+        # This check runs even when force=True to prevent saving useless notes
+        if not self._has_meaningful_content(summary):
+            logger.warning(
+                f"Note has no meaningful content for {hour_start.isoformat()}, "
+                "skipping save and preserving screenshots"
+            )
+            return SummarizationResult(
+                success=True,
+                note_id=None,
+                file_path=None,
+                error=None,
+                events_count=evidence.total_events,
+                screenshots_count=evidence.total_screenshots,
+                keyframes_count=len(keyframes),
+                skipped_idle=True,
+                idle_reason="No meaningful content in generated summary",
+            )
+
         # Step 4: Web enrichment for sports matches and contextual info (if not skipped)
         logger.debug("Enriching summary with web data...")
         enrichment_result = self.enricher.enrich_summary(summary, hour_start)
@@ -456,6 +475,80 @@ class HourlySummarizer:
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             return None
+
+    def _has_meaningful_content(self, summary: HourlySummarySchema) -> bool:
+        """
+        Check if the summary has meaningful content worth saving.
+
+        This is a failsafe check that catches obviously empty notes that
+        slipped through other verification. It does NOT use LLM - just
+        simple heuristics to detect placeholder/empty content.
+
+        Returns:
+            True if note has meaningful content, False if it should be skipped
+        """
+        # Empty indicators - these phrases indicate the LLM couldn't generate real content
+        empty_indicators = [
+            "no summary available",
+            "no activity detected",
+            "no meaningful activity",
+            "no activity details",
+            "no details were captured",
+            "insufficient evidence",
+            "no evidence available",
+            "unable to generate",
+            "could not generate",
+            "nothing to summarize",
+            "no notable activity",
+        ]
+
+        # Check summary text for empty indicators
+        if summary.summary:
+            summary_lower = summary.summary.lower().strip()
+            for indicator in empty_indicators:
+                if indicator in summary_lower:
+                    logger.info(f"Summary contains empty indicator: '{indicator}'")
+                    return False
+        else:
+            logger.info("Summary text is empty")
+            return False
+
+        # Check if summary is too short (less than 50 chars is suspicious)
+        if len(summary.summary.strip()) < 50:
+            logger.info(f"Summary too short: {len(summary.summary.strip())} chars")
+            return False
+
+        # Check if there are any activities
+        if not summary.activities:
+            logger.info("No activities in summary")
+            return False
+
+        # Check if all activities are trivial (only contain generic descriptions)
+        trivial_activities = [
+            "idle",
+            "lock screen",
+            "screen saver",
+            "sleep",
+            "no activity",
+            "system idle",
+        ]
+        real_activities = 0
+        for activity in summary.activities:
+            desc_lower = activity.description.lower() if activity.description else ""
+            is_trivial = any(t in desc_lower for t in trivial_activities)
+            if not is_trivial and len(desc_lower) > 10:
+                real_activities += 1
+
+        if real_activities == 0:
+            logger.info("All activities are trivial or too short")
+            return False
+
+        # Check categories - empty categories usually mean empty note
+        if not summary.categories:
+            logger.info("No categories in summary")
+            return False
+
+        return True
 
     def _verify_note_quality(
         self,

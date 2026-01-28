@@ -482,6 +482,9 @@ class HourlyJobScheduler:
 
     def _hourly_job(self) -> None:
         """Job that runs every hour."""
+        # First, sync filesystem with database (detect manually added files)
+        self._sync_filesystem()
+
         # Create job for the previous hour
         previous_hour = (datetime.now() - timedelta(hours=1)).replace(
             minute=0, second=0, microsecond=0
@@ -494,6 +497,35 @@ class HourlyJobScheduler:
 
         if self.on_job_complete:
             self.on_job_complete(result)
+
+    def _sync_filesystem(self) -> None:
+        """
+        Sync filesystem with database - detect manually added notes/screenshots.
+
+        This runs at the start of each hourly job to ensure:
+        - Manually added notes are indexed in the database
+        - Manually added screenshots are registered
+        """
+        try:
+            from src.jobs.note_reindex import NoteReindexer
+
+            reindexer = NoteReindexer()
+            note_files = reindexer.find_note_files()
+
+            conn = get_connection(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) as count FROM notes")
+            db_count = cursor.fetchone()["count"]
+            conn.close()
+
+            if len(note_files) > db_count:
+                logger.info(
+                    f"Periodic sync: detected {len(note_files) - db_count} orphaned notes, reindexing..."
+                )
+                result = reindexer.reindex_all()
+                logger.info(f"Periodic sync complete: {result.notes_indexed} notes indexed")
+        except Exception as e:
+            logger.warning(f"Periodic filesystem sync failed: {e}")
 
     def _execute_pending(self) -> None:
         """Execute any pending jobs on startup."""
