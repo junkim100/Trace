@@ -691,9 +691,17 @@ class HourlySummarizer:
         if not summary.summary or not summary.summary.strip():
             return {"should_keep": False, "reason": "Empty summary text"}
 
-        # Check if there are any activities
+        # Check if there are any activities - but allow notes with high screenshot count
+        # to proceed to LLM verification (event capture may have failed)
         if not summary.activities:
-            return {"should_keep": False, "reason": "No activities recorded"}
+            # If we have many screenshots, the LLM should decide if there's activity
+            if evidence.total_screenshots >= 50:
+                logger.info(
+                    f"No activities but {evidence.total_screenshots} screenshots - "
+                    "proceeding to LLM verification"
+                )
+            else:
+                return {"should_keep": False, "reason": "No activities recorded"}
 
         # Build verification prompt
         verification_prompt = f"""You are evaluating whether a generated activity note should be kept or discarded.

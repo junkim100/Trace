@@ -555,35 +555,59 @@ def build_hourly_user_prompt(
     lines.append(f"- Text buffers: {evidence.total_text_buffers}")
     lines.append(f"- Selected keyframes: {len(keyframes) if keyframes else 0}")
 
-    # Add idle detection hints
+    # Add idle detection hints - but only if screenshot count is also low
+    # High screenshot count with low events often means event capture missed activity, not idle
+    screenshot_count = evidence.total_screenshots
+    high_screenshot_count = screenshot_count >= 50  # Many screenshots suggest activity
+
     if evidence.total_events <= 2:
-        lines.append("")
-        lines.append("⚠️ IDLE DETECTION HINT: Very few events detected (0-2 context switches).")
-        lines.append(
-            "   This may indicate the user was AFK/idle. Check if screenshots show static content."
-        )
+        if high_screenshot_count:
+            # Don't suggest idle when we have many screenshots
+            lines.append("")
+            lines.append(
+                f"ℹ️ NOTE: Few events detected but {screenshot_count} screenshots captured."
+            )
+            lines.append(
+                "   Event capture may have missed foreground app changes. Prioritize screenshot evidence."
+            )
+        else:
+            lines.append("")
+            lines.append("⚠️ IDLE DETECTION HINT: Very few events detected (0-2 context switches).")
+            lines.append(
+                "   This may indicate the user was AFK/idle. Check if screenshots show static content."
+            )
 
     # Calculate unique apps if events available
     if evidence.events:
         unique_apps = len({e.app_name for e in evidence.events if e.app_name})
-        if unique_apps <= 1:
+        if unique_apps <= 1 and not high_screenshot_count:
             lines.append("")
             lines.append(
                 f"⚠️ IDLE DETECTION HINT: Only {unique_apps} unique app(s) for the entire hour."
             )
 
-        # Check for single long event
-        for event in evidence.events:
-            if event.duration_seconds and event.duration_seconds > 3000:  # > 50 minutes
-                duration_min = event.duration_seconds // 60
-                lines.append("")
-                lines.append(
-                    f"⚠️ IDLE DETECTION HINT: Single event '{event.app_name}' spans {duration_min} minutes."
-                )
-                lines.append(
-                    "   Long single events often indicate user went AFK while app was in foreground."
-                )
-                break
+        # Check for single long event - but not if we have many screenshots
+        if not high_screenshot_count:
+            for event in evidence.events:
+                if event.duration_seconds and event.duration_seconds > 3000:  # > 50 minutes
+                    duration_min = event.duration_seconds // 60
+                    lines.append("")
+                    lines.append(
+                        f"⚠️ IDLE DETECTION HINT: Single event '{event.app_name}' spans {duration_min} minutes."
+                    )
+                    lines.append(
+                        "   Long single events often indicate user went AFK while app was in foreground."
+                    )
+                    break
+
+    # When events are unreliable, add explicit instruction to prioritize screenshots
+    if high_screenshot_count and evidence.total_events <= 5:
+        lines.append("")
+        lines.append("📌 IMPORTANT: If events show minimal activity but screenshots show clear")
+        lines.append(
+            "   user interaction (typing, browsing, messaging), prioritize screenshot evidence."
+        )
+        lines.append("   Extract activities from what you observe in the screenshots.")
 
     lines.append("")
 

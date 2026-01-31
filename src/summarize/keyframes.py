@@ -146,16 +146,27 @@ class KeyframeSelector:
         return selected[: self.max_keyframes]
 
     def _mark_transitions(self, candidates: list[ScreenshotCandidate]) -> None:
-        """Mark candidates that represent app/window transitions."""
+        """Mark candidates that represent app/window transitions.
+
+        When app_id is missing (no event context), uses diff_score as a fallback
+        indicator of visual transitions.
+        """
         prev_app = None
         prev_window = None
 
         for candidate in candidates:
-            # Check for app change
-            if candidate.app_id != prev_app:
+            # Check for app change (only if app_id is known)
+            if candidate.app_id is not None and candidate.app_id != prev_app:
                 candidate.is_transition = True
             # Check for significant window change
-            elif candidate.window_title != prev_window and prev_window is not None:
+            elif (
+                candidate.window_title is not None
+                and candidate.window_title != prev_window
+                and prev_window is not None
+            ):
+                candidate.is_transition = True
+            # Fallback: high diff_score indicates visual transition when app context is missing
+            elif candidate.app_id is None and candidate.diff_score >= 0.4:
                 candidate.is_transition = True
 
             prev_app = candidate.app_id
@@ -168,8 +179,15 @@ class KeyframeSelector:
         Score all candidates for selection.
 
         Returns list of (candidate, score, primary_reason) tuples.
+
+        When event context is missing (app_id is None), increases reliance
+        on visual diff_score for selection.
         """
         scored = []
+
+        # Check if we have event context - if not, boost diff_score weight
+        has_event_context = any(c.app_id is not None for c in candidates)
+        diff_weight_multiplier = 1.0 if has_event_context else 1.5
 
         for candidate in candidates:
             score = 0.0
@@ -180,8 +198,8 @@ class KeyframeSelector:
                 score += self.transition_weight
                 reason = "transition"
 
-            # Diff score contribution
-            diff_contribution = candidate.diff_score * self.diff_weight
+            # Diff score contribution (boosted when no event context)
+            diff_contribution = candidate.diff_score * self.diff_weight * diff_weight_multiplier
             score += diff_contribution
             if diff_contribution > 0.4 and reason == "base":
                 reason = "high_diff"
@@ -202,6 +220,13 @@ class KeyframeSelector:
 
                     if importance > 0.7 and reason not in ("transition",):
                         reason = "importance"
+
+            # Extra boost for screenshots with no event context but high diff
+            # These are likely to show actual user activity the event capture missed
+            if candidate.app_id is None and candidate.diff_score >= 0.5:
+                score += 0.3
+                if reason == "base":
+                    reason = "visual_activity"
 
             scored.append((candidate, score, reason))
 

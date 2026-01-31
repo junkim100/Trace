@@ -583,11 +583,12 @@ function registerGlobalShortcuts() {
   // Toggle window visibility
   const toggleRet = globalShortcut.register(shortcuts.toggleWindow, () => {
     if (mainWindow) {
-      if (mainWindow.isVisible() && mainWindow.isFocused()) {
+      if (mainWindow.isVisible()) {
+        // If visible, hide it (regardless of focus state)
         mainWindow.hide();
       } else {
-        mainWindow.show();
-        mainWindow.focus();
+        // If hidden, show without stealing focus from current app
+        mainWindow.showInactive();
       }
     } else {
       createWindow();
@@ -603,10 +604,10 @@ function registerGlobalShortcuts() {
     if (!mainWindow) {
       createWindow();
     } else {
-      mainWindow.show();
-      mainWindow.focus();
+      // Show without stealing focus from current app
+      mainWindow.showInactive();
     }
-    // Navigate to chat and focus input
+    // Navigate to chat and focus input within the Trace window
     if (mainWindow && mainWindow.webContents) {
       mainWindow.webContents.send('shortcut:quickCapture');
     }
