@@ -179,22 +179,27 @@ class BackfillDetector:
                 if self._note_exists(cursor, hour_start):
                     continue
 
-                # If job was marked success but no note exists, trust the job status.
-                # The hour was intentionally skipped (idle/no meaningful content) and
-                # screenshots should have been deleted at that time.
+                # If job was marked success but no note exists, check if there's
+                # activity on disk that could be reprocessed. Hours may be marked
+                # as "skipped" due to LLM issues that could be resolved later.
                 # Skip this check in force mode (ignore_job_status=True)
                 if not ignore_job_status:
                     was_processed = hour_start.isoformat() in hours_already_processed
                     if was_processed:
-                        # Trust the job status - hour was intentionally skipped
-                        # Note: Screenshots may still exist on disk if they were created
-                        # before the fix to delete screenshots for skipped hours.
-                        # But we should NOT reprocess just because screenshots exist.
-                        logger.debug(
-                            f"Hour {hour_start.isoformat()} was already processed "
-                            "(no note = intentionally skipped), skipping"
+                        # Check if there are screenshots on disk that could be reprocessed
+                        disk_count = self._count_screenshots_on_disk(hour_start)
+                        if disk_count < MIN_SCREENSHOTS_FOR_BACKFILL:
+                            # No screenshots on disk, truly nothing to process
+                            logger.debug(
+                                f"Hour {hour_start.isoformat()} was processed and has no "
+                                f"screenshots on disk, skipping"
+                            )
+                            continue
+                        # Screenshots exist - allow reprocessing since LLM might do better
+                        logger.info(
+                            f"Hour {hour_start.isoformat()} was processed but has no note. "
+                            f"Found {disk_count} screenshots on disk - will reprocess."
                         )
-                        continue
 
                 # Check if there's enough activity
                 hour_end = hour_start + timedelta(hours=1)

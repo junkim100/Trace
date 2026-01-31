@@ -206,12 +206,13 @@ class HourlySummarizer:
                     f"LLM determined note not worth keeping for {hour_start.isoformat()}: "
                     f"{quality_check['reason']}"
                 )
-                # Delete screenshots since we've made a deliberate decision to not create a note.
-                # This prevents backfill from repeatedly trying to reprocess this hour.
-                # The job will be recorded with skipped_idle=True to track this decision.
-                cleanup_success = delete_hourly_screenshot_dir(hour_start)
-                if cleanup_success:
-                    logger.info(f"Deleted screenshots for skipped hour {hour_start.isoformat()}")
+                # Keep screenshots for potential reprocessing - the LLM might have issues
+                # that could be resolved later. Screenshots will be cleaned up during
+                # daily revision after the day is complete.
+                logger.warning(
+                    f"Skipping hour {hour_start.isoformat()} - "
+                    f"screenshots preserved for potential reprocessing"
+                )
                 return SummarizationResult(
                     success=True,
                     note_id=None,
@@ -231,12 +232,13 @@ class HourlySummarizer:
             idle_reason = summary.idle_reason or "User detected as idle/AFK"
             logger.info(f"Idle detected for {hour_start.isoformat()}: {idle_reason}")
 
-            # Delete screenshots since we've made a deliberate decision to not create a note.
-            # This prevents backfill from repeatedly trying to reprocess this hour.
-            # The job will be recorded with skipped_idle=True to track this decision.
-            cleanup_success = delete_hourly_screenshot_dir(hour_start)
-            if cleanup_success:
-                logger.info(f"Deleted screenshots for idle hour {hour_start.isoformat()}")
+            # Keep screenshots for potential reprocessing - the LLM might have issues
+            # that could be resolved later. Screenshots will be cleaned up during
+            # daily revision after the day is complete.
+            logger.warning(
+                f"Skipping hour {hour_start.isoformat()} due to idle detection - "
+                f"screenshots preserved for potential reprocessing"
+            )
 
             return SummarizationResult(
                 success=True,
@@ -256,13 +258,9 @@ class HourlySummarizer:
         # This check runs even when force=True to prevent saving useless notes
         if not self._has_meaningful_content(summary):
             logger.warning(
-                f"Note has no meaningful content for {hour_start.isoformat()}, skipping save"
+                f"Note has no meaningful content for {hour_start.isoformat()}, "
+                "skipping save and preserving screenshots"
             )
-            # Delete screenshots since we've made a deliberate decision to not create a note.
-            # This prevents backfill from repeatedly trying to reprocess this hour.
-            cleanup_success = delete_hourly_screenshot_dir(hour_start)
-            if cleanup_success:
-                logger.info(f"Deleted screenshots for empty-content hour {hour_start.isoformat()}")
             return SummarizationResult(
                 success=True,
                 note_id=None,
