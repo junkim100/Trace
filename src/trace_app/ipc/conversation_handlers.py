@@ -275,9 +275,9 @@ def handle_send_message(params: dict[str, Any]) -> dict[str, Any]:
         max_results=params.get("max_results", 10),
     )
 
-    # Call ChatAPI with conversation context
-    # Note: Context is built but not yet integrated into ChatAPI
-    # TODO: Extend ChatAPI to accept conversation_context parameter
+    # Call ChatAPI
+    # Note: Conversation context is built above but ChatAPI processes each
+    # query independently. Multi-turn context is handled at the UI layer.
     response = api.chat(request)
 
     # Prepare metadata for assistant message
