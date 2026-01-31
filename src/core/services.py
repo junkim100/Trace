@@ -28,6 +28,7 @@ from src.jobs.backfill import BackfillDetector, BackfillResult
 from src.jobs.daily import DailyJobScheduler
 from src.jobs.hourly import HourlyJobScheduler
 from src.jobs.note_recovery import NoteRecoveryService, RecoveryResult
+from src.jobs.notes_sync import NotesSyncService, SyncResult
 from src.platform.notifications import (
     send_critical_notification,
     send_error_notification,
@@ -81,6 +82,9 @@ class ServiceManager:
     # Note recovery check interval (only check every N health checks)
     NOTE_RECOVERY_CHECK_INTERVAL = 60  # Check every 60 health checks (~1 hour)
 
+    # Notes sync check interval (bidirectional sync + empty note cleanup)
+    NOTES_SYNC_CHECK_INTERVAL = 60  # Check every 60 health checks (~1 hour)
+
     def __init__(
         self,
         db_path: Path | str | None = None,
@@ -103,6 +107,7 @@ class ServiceManager:
         self._backfill_detector: BackfillDetector | None = None
         self._sleep_wake_detector: SleepWakeDetector | None = None
         self._note_recovery: NoteRecoveryService | None = None
+        self._notes_sync: NotesSyncService | None = None
 
         # Service status tracking
         self._services: dict[str, ServiceStatus] = {
@@ -155,6 +160,9 @@ class ServiceManager:
 
         # Run initial note recovery check (in background)
         self._schedule_note_recovery()
+
+        # Run initial notes sync (bidirectional + empty cleanup)
+        self._schedule_notes_sync()
 
         # Notify about failures
         failed = [k for k, v in results.items() if not v]
@@ -474,6 +482,10 @@ class ServiceManager:
                 if self._health_check_count % self.NOTE_RECOVERY_CHECK_INTERVAL == 0:
                     self._schedule_note_recovery()
 
+                # Periodic notes sync (bidirectional + empty cleanup)
+                if self._health_check_count % self.NOTES_SYNC_CHECK_INTERVAL == 0:
+                    self._schedule_notes_sync()
+
             except Exception as e:
                 logger.error(f"Health check error: {e}")
 
@@ -648,6 +660,82 @@ class ServiceManager:
 
         except Exception as e:
             logger.error(f"Note recovery check failed: {e}")
+
+    def trigger_notes_sync(self, remove_empty: bool = True, dry_run: bool = False) -> SyncResult:
+        """
+        Manually trigger bidirectional notes sync.
+
+        Performs comprehensive sync between filesystem and database:
+        1. Index notes from disk that aren't in DB
+        2. Recover missing files from DB json_payload
+        3. Clean up orphaned DB records
+        4. Remove empty notes with placeholder content
+
+        Args:
+            remove_empty: Whether to remove empty notes
+            dry_run: If True, only report what would be done
+
+        Returns:
+            SyncResult with detailed statistics
+        """
+        if self._notes_sync is None:
+            self._notes_sync = NotesSyncService(db_path=self.db_path)
+
+        return self._notes_sync.sync_all(remove_empty=remove_empty, dry_run=dry_run)
+
+    def check_notes_sync_status(self) -> dict:
+        """
+        Check notes sync status without making changes.
+
+        Returns:
+            Dict with sync status information
+        """
+        if self._notes_sync is None:
+            self._notes_sync = NotesSyncService(db_path=self.db_path)
+
+        return self._notes_sync.check_status()
+
+    def _schedule_notes_sync(self) -> None:
+        """Schedule a notes sync check in a background thread."""
+        thread = threading.Thread(
+            target=self._run_notes_sync,
+            daemon=True,
+            name="notes-sync",
+        )
+        thread.start()
+
+    def _run_notes_sync(self) -> None:
+        """Run notes sync in background."""
+        try:
+            if self._notes_sync is None:
+                self._notes_sync = NotesSyncService(db_path=self.db_path)
+
+            result = self._notes_sync.sync_all(remove_empty=True, dry_run=False)
+
+            if result.has_changes:
+                logger.info(
+                    f"Notes sync: indexed={result.notes_indexed}, "
+                    f"recovered={result.files_recovered}, orphans={result.orphaned_cleaned}, "
+                    f"empty_removed={result.empty_notes_removed}"
+                )
+
+                # Send notification if significant changes were made
+                changes = []
+                if result.notes_indexed > 0:
+                    changes.append(f"{result.notes_indexed} indexed")
+                if result.files_recovered > 0:
+                    changes.append(f"{result.files_recovered} recovered")
+                if result.empty_notes_removed > 0:
+                    changes.append(f"{result.empty_notes_removed} empty removed")
+
+                if changes:
+                    send_service_notification(
+                        "Notes Sync",
+                        ", ".join(changes),
+                    )
+
+        except Exception as e:
+            logger.error(f"Notes sync failed: {e}")
 
 
 if __name__ == "__main__":

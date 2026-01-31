@@ -179,22 +179,22 @@ class BackfillDetector:
                 if self._note_exists(cursor, hour_start):
                     continue
 
-                # If job was marked success but no note exists, check if there's
-                # activity on disk that wasn't available when the job ran
-                # (e.g., screenshots exist on disk but weren't in DB)
+                # If job was marked success but no note exists, trust the job status.
+                # The hour was intentionally skipped (idle/no meaningful content) and
+                # screenshots should have been deleted at that time.
                 # Skip this check in force mode (ignore_job_status=True)
                 if not ignore_job_status:
                     was_processed = hour_start.isoformat() in hours_already_processed
                     if was_processed:
-                        # Only reprocess if there are now screenshots on disk
-                        disk_count = self._count_screenshots_on_disk(hour_start)
-                        if disk_count < MIN_SCREENSHOTS_FOR_BACKFILL:
-                            # No new activity on disk, skip
-                            continue
-                        logger.info(
-                            f"Hour {hour_start.isoformat()} was processed but has no note. "
-                            f"Found {disk_count} screenshots on disk - will reprocess."
+                        # Trust the job status - hour was intentionally skipped
+                        # Note: Screenshots may still exist on disk if they were created
+                        # before the fix to delete screenshots for skipped hours.
+                        # But we should NOT reprocess just because screenshots exist.
+                        logger.debug(
+                            f"Hour {hour_start.isoformat()} was already processed "
+                            "(no note = intentionally skipped), skipping"
                         )
+                        continue
 
                 # Check if there's enough activity
                 hour_end = hour_start + timedelta(hours=1)

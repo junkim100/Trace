@@ -504,64 +504,24 @@ class HourlyJobScheduler:
 
         This runs at the start of each hourly job to ensure:
         1. Notes on disk are indexed in the database (disk → DB)
-        2. DB records without files are cleaned up (DB → disk validation)
-        3. Manually added screenshots are registered
+        2. Missing files are recovered from DB json_payload (DB → disk)
+        3. DB records without files are cleaned up (orphan cleanup)
+        4. Empty notes with placeholder content are removed
 
-        CRITICAL: Both directions must be checked to prevent:
-        - Lost notes (file exists but not in DB)
-        - Phantom records (DB record exists but file deleted)
+        Uses the NotesSyncService for comprehensive two-way sync.
         """
         try:
-            from src.jobs.note_reindex import NoteReindexer
+            from src.jobs.notes_sync import NotesSyncService
 
-            reindexer = NoteReindexer()
-            note_files = reindexer.find_note_files()
-            note_files_set = {str(f) for f in note_files}
+            sync_service = NotesSyncService(db_path=self.db_path)
+            result = sync_service.sync_all(remove_empty=True, dry_run=False)
 
-            conn = get_connection(self.db_path)
-            try:
-                cursor = conn.cursor()
-
-                # Get all notes from database
-                cursor.execute("SELECT note_id, file_path FROM notes")
-                db_notes = cursor.fetchall()
-                db_paths = {row["file_path"] for row in db_notes if row["file_path"]}
-
-                # Check 1: Notes on disk not in DB (need reindexing)
-                orphaned_on_disk = note_files_set - db_paths
-                if orphaned_on_disk:
-                    logger.info(
-                        f"Periodic sync: {len(orphaned_on_disk)} notes on disk not in DB, reindexing..."
-                    )
-                    result = reindexer.reindex_all()
-                    logger.info(f"Periodic sync: {result.notes_indexed} notes indexed")
-
-                # Check 2: DB records without files (orphaned DB records)
-                orphaned_in_db = []
-                for row in db_notes:
-                    file_path = row["file_path"]
-                    if file_path and not Path(file_path).exists():
-                        orphaned_in_db.append((row["note_id"], file_path))
-
-                if orphaned_in_db:
-                    logger.warning(
-                        f"Periodic sync: {len(orphaned_in_db)} DB records have no files, cleaning up..."
-                    )
-                    for note_id, file_path in orphaned_in_db:
-                        logger.info(f"Removing orphaned DB record: {note_id} (file: {file_path})")
-                        cursor.execute("DELETE FROM notes WHERE note_id = ?", (note_id,))
-                        cursor.execute("DELETE FROM note_entities WHERE note_id = ?", (note_id,))
-                        cursor.execute(
-                            "DELETE FROM embeddings WHERE source_type = 'note' AND source_id = ?",
-                            (note_id,),
-                        )
-                    conn.commit()
-                    logger.info(
-                        f"Periodic sync: cleaned up {len(orphaned_in_db)} orphaned DB records"
-                    )
-
-            finally:
-                conn.close()
+            if result.has_changes:
+                logger.info(
+                    f"Periodic sync: indexed={result.notes_indexed}, "
+                    f"recovered={result.files_recovered}, orphans={result.orphaned_cleaned}, "
+                    f"empty_removed={result.empty_notes_removed}"
+                )
 
         except Exception as e:
             logger.warning(f"Periodic filesystem sync failed: {e}")

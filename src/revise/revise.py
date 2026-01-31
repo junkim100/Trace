@@ -142,27 +142,36 @@ class HourlyNoteReviser:
         day: datetime,
     ) -> list[dict]:
         """
-        Get all hourly notes for a specific day.
+        Get all hourly notes for a specific Trace day.
+
+        A Trace day runs from daily_revision_hour to daily_revision_hour the next day.
+        For example, if daily_revision_hour=3:
+        - "Jan 28 Trace day" = 3am Jan 28 to 3am Jan 29
+
+        This ensures notes from late night hours (e.g., 00:00-03:00 on Jan 29)
+        are correctly included in Jan 28's daily revision.
 
         Args:
             conn: Database connection
-            day: The day to get notes for
+            day: The Trace day to get notes for (uses date portion)
 
         Returns:
             List of note dicts
         """
+        from src.core.paths import get_trace_day_range
+
         cursor = conn.cursor()
 
-        # Calculate day boundaries
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+        # Calculate Trace day boundaries (not calendar day!)
+        trace_day = day.date() if isinstance(day, datetime) else day
+        day_start, day_end = get_trace_day_range(trace_day)
 
         cursor.execute(
             """
             SELECT note_id, note_type, start_ts, end_ts, file_path, json_payload
             FROM notes
             WHERE note_type = 'hour'
-            AND start_ts >= ? AND start_ts <= ?
+            AND start_ts >= ? AND start_ts < ?
             ORDER BY start_ts
             """,
             (day_start.isoformat(), day_end.isoformat()),

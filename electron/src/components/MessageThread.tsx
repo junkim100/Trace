@@ -133,7 +133,7 @@ interface MessageBubbleProps {
   isLast: boolean;
 }
 
-function MessageBubble({ message, onCitationClick, isLast }: MessageBubbleProps) {
+function MessageBubble({ message, onCitationClick, isLast: _isLast }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const metadata = message.metadata as MessageMetadata | null;
 

@@ -233,3 +233,85 @@ def handle_recover_notes(params: dict[str, Any]) -> dict[str, Any]:
             "success": False,
             "error": str(e),
         }
+
+
+@handler("services.sync_notes")
+def handle_sync_notes(params: dict[str, Any]) -> dict[str, Any]:
+    """Manually trigger bidirectional notes sync.
+
+    Performs comprehensive sync between filesystem and database:
+    1. Index notes from disk that aren't in DB
+    2. Recover missing files from DB json_payload
+    3. Clean up orphaned DB records
+    4. Remove empty notes with placeholder content
+
+    Params:
+        remove_empty: Whether to remove empty notes (default: True)
+        dry_run: If True, only report what would be done (default: False)
+    """
+    if _get_service_manager() is None:
+        return {
+            "success": False,
+            "error": "Service manager not initialized",
+        }
+
+    remove_empty = params.get("remove_empty", True)
+    dry_run = params.get("dry_run", False)
+
+    try:
+        result = _get_service_manager().trigger_notes_sync(
+            remove_empty=remove_empty, dry_run=dry_run
+        )
+
+        return {
+            "success": True,
+            "dry_run": dry_run,
+            "notes_indexed": result.notes_indexed,
+            "files_recovered": result.files_recovered,
+            "orphans_cleaned": result.orphaned_cleaned,
+            "empty_removed": result.empty_notes_removed,
+            "has_changes": result.has_changes,
+            "errors": result.errors,
+            "details": {
+                "indexed": result.indexed_notes,
+                "recovered": result.recovered_files,
+                "removed_orphans": result.removed_orphans,
+                "removed_empty": result.removed_empty,
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Notes sync trigger failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+@handler("services.check_sync_status")
+def handle_check_sync_status(params: dict[str, Any]) -> dict[str, Any]:
+    """Check notes sync status without making changes.
+
+    Returns current sync state between filesystem and database,
+    including counts of notes that need syncing.
+    """
+    if _get_service_manager() is None:
+        return {
+            "success": False,
+            "error": "Service manager not initialized",
+        }
+
+    try:
+        status = _get_service_manager().check_notes_sync_status()
+
+        return {
+            "success": True,
+            **status,
+        }
+
+    except Exception as e:
+        logger.error(f"Sync status check failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }

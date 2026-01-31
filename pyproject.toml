@@ -1,6 +1,6 @@
 [project]
 name = "trace"
-version = "0.9.7"
+version = "0.9.9"
 description = "A macOS app that captures digital activity, generates Markdown notes, builds a relationship graph, and provides time-aware chat/search"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -54,6 +54,8 @@ dependencies = [
     # YAML parsing
     "pyyaml>=6.0",
     "mss>=10.1.0",
+    # Web search
+    "tavily-python>=0.3.0",
 ]
 
 [project.optional-dependencies]

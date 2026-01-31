@@ -1490,6 +1490,20 @@ wheels = [
 ]
 
 [[package]]
+name = "tavily-python"
+version = "0.7.19"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "requests" },
+    { name = "tiktoken" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bd/e1/21639fc5904d52d66f217e3031cd28d1e2227fd3f3f0b7fb51582d2f6d26/tavily_python-0.7.19.tar.gz", hash = "sha256:b5c195f58f8df0886814e50e641ba10ef8e5ec72be1e884b8f4b3b99c49934cf", size = 21458, upload-time = "2026-01-15T15:11:33.386Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/51/d6056841a4b440ba0a1703a9aff3a87b8be57c6bb5c42c6615696f01a890/tavily_python-0.7.19-py3-none-any.whl", hash = "sha256:b3d95041f22c5dff37255f65308379e4f8ccef8fe0d92b860815812b570f5ef2", size = 18340, upload-time = "2026-01-15T15:11:29.976Z" },
+]
+
+[[package]]
 name = "termcolor"
 version = "3.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1620,7 +1634,7 @@ wheels = [
 
 [[package]]
 name = "trace"
-version = "0.9.7"
+version = "0.9.8"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
@@ -1642,6 +1656,7 @@ dependencies = [
     { name = "pytz" },
     { name = "pyyaml" },
     { name = "sqlite-vec" },
+    { name = "tavily-python" },
     { name = "tiktoken" },
     { name = "zstandard" },
 ]
@@ -1688,6 +1703,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
     { name = "sqlite-vec", specifier = ">=0.1.1" },
+    { name = "tavily-python", specifier = ">=0.3.0" },
     { name = "tiktoken", specifier = ">=0.5" },
     { name = "zstandard", specifier = ">=0.22" },
 ]

@@ -338,6 +338,21 @@ class DailyJobExecutor:
 
         if not hourly_notes:
             logger.info(f"No hourly notes found for {day_str}")
+            # Still run cleanup to delete any orphaned screenshots from skipped hours
+            # This handles days where all hours were idle/skipped
+            cleanup_completed = False
+            try:
+                logger.info(f"Running cleanup for day with no notes: {day_str}")
+                cleanup_result = self.cleaner.cleanup_day(day, force=True)
+                cleanup_completed = cleanup_result.success
+                if cleanup_completed:
+                    logger.info(
+                        f"Cleaned up {cleanup_result.total_files_deleted} files "
+                        f"({cleanup_result.total_bytes_freed / (1024 * 1024):.1f} MB) for {day_str}"
+                    )
+            except Exception as e:
+                logger.warning(f"Cleanup failed for no-notes day {day_str}: {e}")
+
             return DailyRevisionResult(
                 success=True,
                 day=day_str,
@@ -347,7 +362,7 @@ class DailyJobExecutor:
                 edges_created=0,
                 aggregates_computed=0,
                 embeddings_refreshed=0,
-                cleanup_completed=False,
+                cleanup_completed=cleanup_completed,
             )
 
         # Step 2: Call LLM for daily revision

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChatInput } from '../components/ChatInput';
 import { TimeFilter, TimePreset, getTimeFilterHint } from '../components/TimeFilter';
-import { Results } from '../components/Results';
+import { Sources } from '../components/Sources';
 import { NoteViewer } from '../components/NoteViewer';
 import { ConversationSidebar } from '../components/ConversationSidebar';
 import { MessageThread } from '../components/MessageThread';
@@ -13,7 +13,6 @@ function ChatContent() {
   const navigate = useNavigate();
   const {
     currentConversation,
-    messages,
     sending,
     error,
     sendMessage,
@@ -83,8 +82,8 @@ function ChatContent() {
     setCustomEnd(end);
   }, []);
 
-  // Get notes from the last response for the sidebar
-  const notes = lastResponse?.response?.notes || [];
+  // Get citations from the last response for the sidebar
+  const citations = lastResponse?.response?.unified_citations || [];
 
   return (
     <div style={styles.container}>
@@ -209,18 +208,13 @@ function ChatContent() {
           </div>
         </div>
 
-        {/* Results sidebar (right) */}
+        {/* Sources sidebar (right) */}
         <div style={styles.resultsSidebar}>
-          <div style={styles.filterSection}>
-            <h3 style={styles.sectionTitle}>Related Notes</h3>
-          </div>
-          <div style={styles.resultsSection}>
-            <Results
-              notes={notes}
-              onNoteClick={setSelectedNoteId}
-              loading={sending}
-            />
-          </div>
+          <Sources
+            citations={citations}
+            onNoteClick={setSelectedNoteId}
+            loading={sending}
+          />
         </div>
       </main>
 
@@ -366,30 +360,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '0.5rem',
   },
   resultsSidebar: {
-    width: '280px',
+    width: '300px',
     borderLeft: '1px solid var(--border)',
     display: 'flex',
     flexDirection: 'column',
     padding: '1rem',
-    gap: '1rem',
-  },
-  filterSection: {
-    flexShrink: 0,
-  },
-  sectionTitle: {
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    color: 'var(--text-secondary)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    marginBottom: '0.75rem',
-  },
-  resultsSection: {
-    flex: 1,
-    minHeight: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'auto',
+    overflow: 'hidden',
   },
 };
 

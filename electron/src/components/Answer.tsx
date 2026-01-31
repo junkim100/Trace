@@ -143,58 +143,6 @@ function renderAnswerWithCitations(
   });
 }
 
-// Citation reference list at the bottom
-function CitationReferenceList({
-  citations,
-  onWebClick,
-  onNoteClick,
-}: {
-  citations: UnifiedCitation[];
-  onWebClick: (url: string) => void;
-  onNoteClick: (noteId: string) => void;
-}) {
-  if (!citations || citations.length === 0) return null;
-
-  return (
-    <div style={styles.citationReferenceList}>
-      <span style={styles.citationsLabel}>Sources</span>
-      <div style={styles.referenceItems}>
-        {citations.map((cit) => (
-          <div
-            key={cit.id}
-            style={{
-              ...styles.referenceItem,
-              ...(cit.type === 'web' ? styles.referenceItemWeb : styles.referenceItemNote),
-            }}
-          >
-            <span style={styles.referenceId}>[{cit.id}]</span>
-            {cit.type === 'web' ? (
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  if (cit.url) onWebClick(cit.url);
-                }}
-                style={styles.referenceLink}
-                title={cit.url}
-              >
-                {cit.title || cit.url}
-              </a>
-            ) : (
-              <button
-                onClick={() => cit.note_id && onNoteClick(cit.note_id)}
-                style={styles.referenceNoteButton}
-              >
-                {cit.note_type === 'daily' ? '📅' : '⏰'} {cit.label}
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // Example questions for the placeholder
 const EXAMPLE_QUESTIONS = [
   "What did I work on today?",
@@ -418,14 +366,7 @@ export function Answer({ response, loading = false, error = null, onCitationClic
           <p style={styles.answerText}>{response.answer}</p>
         )}
 
-        {/* v0.8.0: Citation reference list (Perplexity-style) */}
-        {hasUnifiedCitations && (
-          <CitationReferenceList
-            citations={response.unified_citations!}
-            onWebClick={handleWebClick}
-            onNoteClick={handleNoteClick}
-          />
-        )}
+        {/* Note: Citation reference list is now displayed in the right sidebar (Sources component) */}
 
         {/* Legacy citations (backwards compatibility) */}
         {!hasUnifiedCitations && response.citations.length > 0 && (
@@ -453,7 +394,7 @@ export function Answer({ response, loading = false, error = null, onCitationClic
                     key={idx}
                     onClick={() => onCitationClick?.(citation.note_id)}
                     style={styles.citationButton}
-                    title={citation.quote}
+                    title={`View note from ${citation.label}`}
                   >
                     {formatCitationLabel(citation.timestamp)}
                   </button>
@@ -910,49 +851,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-primary)',
     overflowY: 'auto' as const,
     maxHeight: '200px',
-  },
-  // Citation reference list
-  citationReferenceList: {
-    marginTop: '1rem',
-    paddingTop: '1rem',
-    borderTop: '1px solid var(--border)',
-  },
-  referenceItems: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '6px',
-    marginTop: '8px',
-  },
-  referenceItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontSize: '0.85em',
-    padding: '4px 0',
-  },
-  referenceItemWeb: {},
-  referenceItemNote: {},
-  referenceId: {
-    fontWeight: 600,
-    color: 'var(--text-secondary)',
-    minWidth: '24px',
-  },
-  referenceLink: {
-    color: '#1976d2',
-    textDecoration: 'none',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
-    maxWidth: '300px',
-  },
-  referenceNoteButton: {
-    background: 'none',
-    border: 'none',
-    color: '#7b1fa2',
-    cursor: 'pointer',
-    padding: 0,
-    fontSize: 'inherit',
-    textAlign: 'left' as const,
   },
 };
 
