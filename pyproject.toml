@@ -1,6 +1,6 @@
 [project]
 name = "trace"
-version = "0.9.10"
+version = "0.9.11"
 description = "A macOS app that captures digital activity, generates Markdown notes, builds a relationship graph, and provides time-aware chat/search"
 readme = "README.md"
 license = { file = "LICENSE" }

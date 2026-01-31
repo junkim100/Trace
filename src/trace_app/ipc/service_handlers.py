@@ -73,7 +73,7 @@ def handle_restart_service(params: dict[str, Any]) -> dict[str, Any]:
 
 @handler("services.trigger_backfill")
 def handle_trigger_backfill(params: dict[str, Any]) -> dict[str, Any]:
-    """Manually trigger backfill for missing notes.
+    """Manually trigger backfill for missing notes (both hourly and daily).
 
     Params:
         notify: Whether to send notifications (default: True)
@@ -89,7 +89,15 @@ def handle_trigger_backfill(params: dict[str, Any]) -> dict[str, Any]:
     force = params.get("force", False)
 
     try:
+        # This now runs both hourly and daily backfill
         result = _get_service_manager().trigger_backfill(notify=notify, force=force)
+
+        # Also get daily backfill info
+        daily_missing = []
+        try:
+            daily_missing = _get_service_manager().find_missing_daily_notes()
+        except Exception:
+            pass
 
         return {
             "success": True,
@@ -97,10 +105,78 @@ def handle_trigger_backfill(params: dict[str, Any]) -> dict[str, Any]:
             "hours_missing": result.hours_missing,
             "hours_backfilled": result.hours_backfilled,
             "hours_failed": result.hours_failed,
+            "daily_missing_count": len(daily_missing),
         }
 
     except Exception as e:
         logger.error(f"Backfill trigger failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+@handler("services.trigger_daily_backfill")
+def handle_trigger_daily_backfill(params: dict[str, Any]) -> dict[str, Any]:
+    """Manually trigger daily backfill for missing daily notes.
+
+    Finds days with hourly notes but no daily note and creates them.
+
+    Params:
+        notify: Whether to send notifications (default: True)
+        max_days: Maximum days to backfill (default: 5)
+    """
+    if _get_service_manager() is None:
+        return {
+            "success": False,
+            "error": "Service manager not initialized",
+        }
+
+    notify = params.get("notify", True)
+    max_days = params.get("max_days", 5)
+
+    try:
+        result = _get_service_manager().trigger_daily_backfill(notify=notify, max_days=max_days)
+
+        return {
+            "success": True,
+            "days_checked": result.days_checked,
+            "days_missing": result.days_missing,
+            "days_backfilled": result.days_backfilled,
+            "days_failed": result.days_failed,
+        }
+
+    except Exception as e:
+        logger.error(f"Daily backfill trigger failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+        }
+
+
+@handler("services.check_missing_daily")
+def handle_check_missing_daily(params: dict[str, Any]) -> dict[str, Any]:
+    """Check for missing daily notes without triggering backfill.
+
+    Finds days with hourly notes but no daily note.
+    """
+    if _get_service_manager() is None:
+        return {
+            "success": False,
+            "error": "Service manager not initialized",
+        }
+
+    try:
+        missing = _get_service_manager().find_missing_daily_notes()
+
+        return {
+            "success": True,
+            "missing_count": len(missing),
+            "missing_days": [d.strftime("%Y-%m-%d") for d in missing],
+        }
+
+    except Exception as e:
+        logger.error(f"Missing daily check failed: {e}")
         return {
             "success": False,
             "error": str(e),

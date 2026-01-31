@@ -24,7 +24,12 @@ from pathlib import Path
 from src.capture.daemon import CaptureDaemon
 from src.core.config import get_api_key, get_capture_config
 from src.core.paths import DB_PATH
-from src.jobs.backfill import BackfillDetector, BackfillResult
+from src.jobs.backfill import (
+    BackfillDetector,
+    BackfillResult,
+    DailyBackfillDetector,
+    DailyBackfillResult,
+)
 from src.jobs.daily import DailyJobScheduler
 from src.jobs.hourly import HourlyJobScheduler
 from src.jobs.note_recovery import NoteRecoveryService, RecoveryResult
@@ -105,6 +110,7 @@ class ServiceManager:
         self._hourly_scheduler: HourlyJobScheduler | None = None
         self._daily_scheduler: DailyJobScheduler | None = None
         self._backfill_detector: BackfillDetector | None = None
+        self._daily_backfill_detector: DailyBackfillDetector | None = None
         self._sleep_wake_detector: SleepWakeDetector | None = None
         self._note_recovery: NoteRecoveryService | None = None
         self._notes_sync: NotesSyncService | None = None
@@ -261,14 +267,14 @@ class ServiceManager:
 
     def trigger_backfill(self, notify: bool = True, force: bool = False) -> BackfillResult:
         """
-        Manually trigger backfill check and execution.
+        Manually trigger backfill check and execution for both hourly and daily notes.
 
         Args:
             notify: Whether to send notifications
             force: If True, reprocess all hours ignoring job status and LLM checks
 
         Returns:
-            BackfillResult with statistics
+            BackfillResult with statistics (for hourly backfill)
         """
         if self._backfill_detector is None:
             self._backfill_detector = BackfillDetector(
@@ -276,7 +282,65 @@ class ServiceManager:
                 api_key=self.api_key,
             )
 
-        return self._backfill_detector.check_and_backfill(notify=notify, force=force)
+        # Run hourly backfill first
+        hourly_result = self._backfill_detector.check_and_backfill(notify=notify, force=force)
+
+        # Then run daily backfill (only if hourly created some notes or force mode)
+        if hourly_result.hours_backfilled > 0 or force:
+            try:
+                daily_result = self.trigger_daily_backfill(notify=notify)
+                if daily_result.days_backfilled > 0:
+                    logger.info(f"Daily backfill: {daily_result.days_backfilled} days processed")
+            except Exception as e:
+                logger.error(f"Daily backfill failed: {e}")
+        else:
+            # Still check for missing daily notes even if no hourly notes were created
+            try:
+                daily_result = self.trigger_daily_backfill(notify=notify)
+                if daily_result.days_backfilled > 0:
+                    logger.info(f"Daily backfill: {daily_result.days_backfilled} days processed")
+            except Exception as e:
+                logger.error(f"Daily backfill failed: {e}")
+
+        return hourly_result
+
+    def trigger_daily_backfill(self, notify: bool = True, max_days: int = 5) -> DailyBackfillResult:
+        """
+        Manually trigger daily backfill check and execution.
+
+        Finds days that have hourly notes but no daily note and creates them.
+
+        Args:
+            notify: Whether to send notifications
+            max_days: Maximum days to backfill in one run
+
+        Returns:
+            DailyBackfillResult with statistics
+        """
+        if self._daily_backfill_detector is None:
+            self._daily_backfill_detector = DailyBackfillDetector(
+                db_path=self.db_path,
+                api_key=self.api_key,
+            )
+
+        return self._daily_backfill_detector.trigger_daily_backfill(
+            notify=notify, max_days=max_days
+        )
+
+    def find_missing_daily_notes(self) -> list:
+        """
+        Find days with hourly notes but no daily note.
+
+        Returns:
+            List of dates (datetime) that need daily notes
+        """
+        if self._daily_backfill_detector is None:
+            self._daily_backfill_detector = DailyBackfillDetector(
+                db_path=self.db_path,
+                api_key=self.api_key,
+            )
+
+        return self._daily_backfill_detector.find_missing_days()
 
     def trigger_note_recovery(self, notify: bool = True) -> RecoveryResult:
         """

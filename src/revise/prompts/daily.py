@@ -329,13 +329,13 @@ def build_daily_user_prompt(
         watching = media.get("watching", [])
         if listening:
             for item in listening:
-                duration = item.get("duration_seconds", 0) // 60
+                duration = (item.get("duration_seconds") or 0) // 60
                 lines.append(
                     f"**Listening**: {item.get('artist', '')} - {item.get('track', '')} ({duration}m)"
                 )
         if watching:
             for item in watching:
-                duration = item.get("duration_seconds", 0) // 60
+                duration = (item.get("duration_seconds") or 0) // 60
                 lines.append(f"**Watching**: {item.get('title', '')} ({duration}m)")
 
         # Documents

@@ -281,7 +281,7 @@ class AggregatesComputer:
             for item in media.get("listening", []):
                 artist = item.get("artist", "")
                 track = item.get("track", "")
-                duration = item.get("duration_seconds", 0) / 60
+                duration = (item.get("duration_seconds") or 0) / 60
 
                 key = f"{artist} - {track}"
                 media_minutes[key] = media_minutes.get(key, 0) + duration
@@ -289,7 +289,7 @@ class AggregatesComputer:
             # Watching
             for item in media.get("watching", []):
                 title = item.get("title", "")
-                duration = item.get("duration_seconds", 0) / 60
+                duration = (item.get("duration_seconds") or 0) / 60
 
                 media_minutes[title] = media_minutes.get(title, 0) + duration
 
