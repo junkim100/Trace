@@ -5,12 +5,12 @@ cask "trace" do
   version "1.0.0"
 
   on_arm do
-    sha256 "ef16008d419a916223ed78fc75f26e1a732a18cdc1294087d8e6362e07044cc6"
+    sha256 "1bd4aa61e5a60343ff6783d0bc482123554f93b6093b020a56f3aec8e1450f3d"
     url "https://github.com/junkim100/Trace/releases/download/v#{version}/Trace-#{version}-arm64.dmg"
   end
 
   on_intel do
-    sha256 "103955c31b5effbba9fa307b1532f9da1e837ee1301b86a29dfe74254ac3aecb"
+    sha256 "395888b02adc4e62e6d37f8b685daf5f4e70ed2b916a2a4a23ca6d25cccaa8d4"
     url "https://github.com/junkim100/Trace/releases/download/v#{version}/Trace-#{version}.dmg"
   end
 
