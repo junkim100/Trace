@@ -187,6 +187,13 @@ def get_note_path(dt: datetime | date, note_type: str = "hour") -> Path:
     """
     Get the path for a note file based on date/time and type.
 
+    Notes are organized by "Trace day" (based on daily_revision_hour) to ensure
+    all activity before the daily revision is grouped together. For example,
+    if daily_revision_hour=6, then 3am on Jan 26 belongs to Jan 25's Trace day.
+
+    The folder structure uses the Trace day, while hourly note filenames include
+    the actual calendar date and hour for unambiguous reference.
+
     Args:
         dt: The datetime or date for the note
         note_type: Either "hour" or "day"
@@ -201,20 +208,29 @@ def get_note_path(dt: datetime | date, note_type: str = "hour") -> Path:
         raise ValueError(f"note_type must be 'hour' or 'day', got '{note_type}'")
 
     if isinstance(dt, datetime):
-        d = dt.date()
+        # Get the Trace day for folder organization
+        trace_day = get_trace_day(dt)
+        calendar_date = dt.date()
         hour = dt.hour
     else:
-        d = dt
+        # If only a date is provided, use it as both Trace day and calendar date
+        trace_day = dt
+        calendar_date = dt
         hour = 0
 
-    # Build the directory path: notes/YYYY/MM/DD/
-    note_dir = NOTES_DIR / f"{d.year:04d}" / f"{d.month:02d}" / f"{d.day:02d}"
+    # Build the directory path using Trace day: notes/YYYY/MM/DD/
+    note_dir = (
+        NOTES_DIR / f"{trace_day.year:04d}" / f"{trace_day.month:02d}" / f"{trace_day.day:02d}"
+    )
 
     # Build the filename
-    date_str = f"{d.year:04d}{d.month:02d}{d.day:02d}"
     if note_type == "hour":
+        # Hourly notes: use calendar date in filename for unambiguous reference
+        date_str = f"{calendar_date.year:04d}{calendar_date.month:02d}{calendar_date.day:02d}"
         filename = f"hour-{date_str}-{hour:02d}.md"
     else:
+        # Daily notes: use Trace day in filename (matches folder)
+        date_str = f"{trace_day.year:04d}{trace_day.month:02d}{trace_day.day:02d}"
         filename = f"day-{date_str}.md"
 
     return note_dir / filename
@@ -466,7 +482,9 @@ def ensure_daily_cache_dirs(dt: datetime | date | None = None) -> dict[str, Path
 
 def ensure_note_directory(dt: datetime | date) -> Path:
     """
-    Ensure the note directory for a specific date exists.
+    Ensure the note directory for a specific Trace day exists.
+
+    The directory is organized by Trace day (based on daily_revision_hour).
 
     Args:
         dt: The datetime or date
@@ -475,11 +493,13 @@ def ensure_note_directory(dt: datetime | date) -> Path:
         Path to the note directory
     """
     if isinstance(dt, datetime):
-        d = dt.date()
+        trace_day = get_trace_day(dt)
     else:
-        d = dt
+        trace_day = dt
 
-    note_dir = NOTES_DIR / f"{d.year:04d}" / f"{d.month:02d}" / f"{d.day:02d}"
+    note_dir = (
+        NOTES_DIR / f"{trace_day.year:04d}" / f"{trace_day.month:02d}" / f"{trace_day.day:02d}"
+    )
     note_dir.mkdir(parents=True, exist_ok=True)
     return note_dir
 
