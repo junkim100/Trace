@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/trace-logo.png" alt="Trace" width="600">
+  <img src="assets/trace-logo.png" alt="Trace" >
 </p>
 
 <p align="center">
