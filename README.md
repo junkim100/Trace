@@ -1,8 +1,25 @@
-# Trace
+<p align="center">
+  <img src="assets/trace-logo.png" alt="Trace" width="200">
+</p>
 
-**Your second brain for everything you do on your Mac.**
+<p align="center">
+  <strong>Your second brain for everything you do on your Mac.</strong>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Install</a> •
+  <a href="#key-features">Features</a> •
+  <a href="#how-it-works">How It Works</a> •
+  <a href="#100-private">Privacy</a>
+</p>
+
+---
 
 Trace silently watches your digital activity and builds a searchable, AI-powered memory of your entire computing life. Ask questions about your past in plain English and get instant, accurate answers.
+
+<p align="center">
+  <img src="assets/screenshot-1-research.png" alt="Ask about your research history" width="700">
+</p>
 
 > *"What was that article I was reading last week about machine learning?"*
 > *"When did I last work on the React project?"*
@@ -23,14 +40,11 @@ Trace changes that. It's like having a **perfect memory** for your digital life.
 ### Ask Your Past
 Chat with your computer history using natural language. Trace understands context, time, and relationships between your activities.
 
-```
-You: What was I working on last Tuesday afternoon?
+<p align="center">
+  <img src="assets/screenshot-2-distraction.png" alt="Track distractions and resume work" width="700">
+</p>
 
-Trace: Last Tuesday (Jan 21) from 2-6 PM, you were primarily working on
-the authentication system refactor. You had VS Code open with the auth/
-directory, referenced the OAuth 2.0 documentation on oauth.net, and were
-listening to the "Deep Focus" playlist on Spotify. [1][2][3]
-```
+*Lost your flow? Trace remembers exactly where you left off and what distracted you.*
 
 ### Automatic Note-Taking
 Every hour, Trace generates a structured summary of your activity—what apps you used, what you worked on, what you learned. No manual input required.
