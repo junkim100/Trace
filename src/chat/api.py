@@ -29,6 +29,7 @@ from src.chat.prompts.answer import (
     AnswerSynthesizer,
     Citation,
     CitationBuilder,
+    CitationType,
     FollowUpQuestion,
     UnifiedCitation,
 )
@@ -469,6 +470,22 @@ class ChatAPI:
             answer = synthesized.answer
             old_citations = synthesized.citations
             confidence = synthesized.confidence
+
+            # Convert old-style citations to unified citations for Sources panel
+            note_lookup = {n.note_id: n for n in notes}
+            for idx, cit in enumerate(old_citations, start=1):
+                note = note_lookup.get(cit.note_id)
+                unified_citations.append(
+                    UnifiedCitation(
+                        id=str(idx),
+                        type=CitationType.NOTE,
+                        label=cit.label,
+                        note_id=cit.note_id,
+                        note_type="daily" if cit.note_type == "day" else "hourly",
+                        timestamp=cit.timestamp.isoformat(),
+                        note_content=note.summary[:200] if note else None,
+                    )
+                )
         else:
             synthesized = self._synthesizer.synthesize_without_context(query)
             answer = synthesized.answer
