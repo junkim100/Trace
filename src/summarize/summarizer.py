@@ -206,13 +206,10 @@ class HourlySummarizer:
                     f"LLM determined note not worth keeping for {hour_start.isoformat()}: "
                     f"{quality_check['reason']}"
                 )
-                # Keep screenshots for potential reprocessing - the LLM might have issues
-                # that could be resolved later. Screenshots will be cleaned up during
-                # daily revision after the day is complete.
-                logger.warning(
-                    f"Skipping hour {hour_start.isoformat()} - "
-                    f"screenshots preserved for potential reprocessing"
-                )
+                # Delete screenshots since no note will be created for this idle hour
+                logger.info(f"Deleting screenshots for idle hour {hour_start.isoformat()}")
+                delete_hourly_screenshot_dir(hour_start)
+
                 return SummarizationResult(
                     success=True,
                     note_id=None,
@@ -232,13 +229,9 @@ class HourlySummarizer:
             idle_reason = summary.idle_reason or "User detected as idle/AFK"
             logger.info(f"Idle detected for {hour_start.isoformat()}: {idle_reason}")
 
-            # Keep screenshots for potential reprocessing - the LLM might have issues
-            # that could be resolved later. Screenshots will be cleaned up during
-            # daily revision after the day is complete.
-            logger.warning(
-                f"Skipping hour {hour_start.isoformat()} due to idle detection - "
-                f"screenshots preserved for potential reprocessing"
-            )
+            # Delete screenshots since no note will be created for this idle hour
+            logger.info(f"Deleting screenshots for idle hour {hour_start.isoformat()}")
+            delete_hourly_screenshot_dir(hour_start)
 
             return SummarizationResult(
                 success=True,
@@ -258,9 +251,12 @@ class HourlySummarizer:
         # This check runs even when force=True to prevent saving useless notes
         if not self._has_meaningful_content(summary):
             logger.warning(
-                f"Note has no meaningful content for {hour_start.isoformat()}, "
-                "skipping save and preserving screenshots"
+                f"Note has no meaningful content for {hour_start.isoformat()}, skipping save"
             )
+            # Delete screenshots since no note will be created
+            logger.info(f"Deleting screenshots for hour with no content {hour_start.isoformat()}")
+            delete_hourly_screenshot_dir(hour_start)
+
             return SummarizationResult(
                 success=True,
                 note_id=None,
