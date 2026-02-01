@@ -2,7 +2,7 @@
 # A second brain built from your digital activity
 
 cask "trace" do
-  version "0.9.5"
+  version "1.0.0"
 
   on_arm do
     sha256 "ef16008d419a916223ed78fc75f26e1a732a18cdc1294087d8e6362e07044cc6"
