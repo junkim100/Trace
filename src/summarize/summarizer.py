@@ -280,20 +280,34 @@ class HourlySummarizer:
         file_path = get_note_path(hour_start)
         ensure_note_directory(hour_start)
 
-        # Step 6: Render and save Markdown
+        # Step 6: Render, hash, register suppression, and save Markdown
         logger.debug("Rendering Markdown note...")
-        saved = self.renderer.render_to_file(
+        location = evidence.locations[0] if evidence.locations else None
+        app_durs = evidence.app_durations if evidence.app_durations else None
+        cal_events = evidence.calendar_events if evidence.calendar_events else None
+
+        content, content_hash = self.renderer.render_and_hash(
             summary=summary,
             note_id=note_id,
             hour_start=hour_start,
             hour_end=hour_end,
-            file_path=file_path,
-            location=evidence.locations[0] if evidence.locations else None,
-            app_durations=evidence.app_durations if evidence.app_durations else None,
-            calendar_events=evidence.calendar_events if evidence.calendar_events else None,
+            location=location,
+            app_durations=app_durs,
+            calendar_events=cal_events,
         )
 
-        if not saved:
+        # Register with suppression registry before writing
+        from src.jobs.file_watcher import get_suppression_registry
+
+        get_suppression_registry().register(str(file_path), content_hash)
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            logger.info(f"Saved note to {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to save note to {file_path}: {e}")
             return SummarizationResult(
                 success=False,
                 note_id=note_id,
@@ -309,6 +323,7 @@ class HourlySummarizer:
             hour_end=hour_end,
             file_path=file_path,
             summary=summary,
+            content_hash=content_hash,
         )
 
         # Step 8: Extract and store entities
@@ -802,6 +817,7 @@ Respond with ONLY a JSON object:
         hour_end: datetime,
         file_path: Path,
         summary: HourlySummarySchema,
+        content_hash: str | None = None,
     ) -> None:
         """Store note metadata in the database."""
         conn = get_connection(self.db_path)
@@ -814,8 +830,9 @@ Respond with ONLY a JSON object:
             cursor.execute(
                 """
                 INSERT OR REPLACE INTO notes
-                (note_id, note_type, start_ts, end_ts, file_path, json_payload, created_ts, updated_ts)
-                VALUES (?, 'hour', ?, ?, ?, ?, ?, ?)
+                (note_id, note_type, start_ts, end_ts, file_path, json_payload,
+                 content_hash, created_ts, updated_ts)
+                VALUES (?, 'hour', ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     note_id,
@@ -823,6 +840,7 @@ Respond with ONLY a JSON object:
                     hour_end.isoformat(),
                     str(file_path),
                     json_payload,
+                    content_hash,
                     datetime.now().isoformat(),
                     datetime.now().isoformat(),
                 ),

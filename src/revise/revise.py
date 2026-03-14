@@ -230,24 +230,31 @@ class HourlyNoteReviser:
             hour_end = note["end_ts"]
             location = updated_summary.location
 
-            # Render and write to file
-            success = self.renderer.render_to_file(
+            # Render, hash, and register suppression before writing
+            content, content_hash = self.renderer.render_and_hash(
                 updated_summary,
                 note_id,
                 hour_start,
                 hour_end,
-                file_path,
                 location,
             )
 
-            if not success:
+            from src.jobs.file_watcher import get_suppression_registry
+
+            get_suppression_registry().register(str(file_path), content_hash)
+
+            try:
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+            except Exception as e:
                 return RevisionResult(
                     note_id=note_id,
                     hour=hour,
                     success=False,
                     file_path=file_path,
                     revised_summary=None,
-                    error="Failed to write file",
+                    error=f"Failed to write file: {e}",
                 )
 
             # Update database record
@@ -255,11 +262,12 @@ class HourlyNoteReviser:
             cursor.execute(
                 """
                 UPDATE notes
-                SET json_payload = ?, updated_ts = ?
+                SET json_payload = ?, content_hash = ?, updated_ts = ?
                 WHERE note_id = ?
                 """,
                 (
                     json.dumps(updated_payload),
+                    content_hash,
                     datetime.now().isoformat(),
                     note_id,
                 ),

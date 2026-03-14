@@ -72,13 +72,20 @@ class DailyNoteGenerator:
             # Render the daily note
             content = self._render_daily_note(day, revision, note_id)
 
+            # Compute hash and register suppression before writing
+            from src.core.hashing import compute_content_hash
+            from src.jobs.file_watcher import get_suppression_registry
+
+            content_hash = compute_content_hash(content)
+            get_suppression_registry().register(str(file_path), content_hash)
+
             # Ensure directory exists and write file
             file_path.parent.mkdir(parents=True, exist_ok=True)
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
             # Store in database
-            self._store_note_in_db(day, note_id, file_path, revision)
+            self._store_note_in_db(day, note_id, file_path, revision, content_hash)
 
             logger.info(f"Generated daily note {note_id} at {file_path}")
 
@@ -263,6 +270,7 @@ class DailyNoteGenerator:
         note_id: str,
         file_path: Path,
         revision: DailyRevisionSchema,
+        content_hash: str | None = None,
     ) -> None:
         """
         Store the daily note in the database.
@@ -272,6 +280,7 @@ class DailyNoteGenerator:
             note_id: Note ID
             file_path: Path to the Markdown file
             revision: DailyRevisionSchema
+            content_hash: SHA-256 hash of the rendered content
         """
         conn = get_connection(self.db_path)
         try:
@@ -296,12 +305,13 @@ class DailyNoteGenerator:
                 cursor.execute(
                     """
                     UPDATE notes
-                    SET file_path = ?, json_payload = ?, updated_ts = ?
+                    SET file_path = ?, json_payload = ?, content_hash = ?, updated_ts = ?
                     WHERE note_id = ?
                     """,
                     (
                         str(file_path),
                         json.dumps(revision.model_dump()),
+                        content_hash,
                         datetime.now().isoformat(),
                         existing["note_id"],
                     ),
@@ -312,8 +322,9 @@ class DailyNoteGenerator:
                 cursor.execute(
                     """
                     INSERT INTO notes
-                    (note_id, note_type, start_ts, end_ts, file_path, json_payload, created_ts, updated_ts)
-                    VALUES (?, 'day', ?, ?, ?, ?, ?, ?)
+                    (note_id, note_type, start_ts, end_ts, file_path, json_payload,
+                     content_hash, created_ts, updated_ts)
+                    VALUES (?, 'day', ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         note_id,
@@ -321,6 +332,7 @@ class DailyNoteGenerator:
                         day_end.isoformat(),
                         str(file_path),
                         json.dumps(revision.model_dump()),
+                        content_hash,
                         datetime.now().isoformat(),
                         datetime.now().isoformat(),
                     ),

@@ -31,6 +31,7 @@ from src.jobs.backfill import (
     DailyBackfillResult,
 )
 from src.jobs.daily import DailyJobScheduler
+from src.jobs.file_watcher import NoteFileWatcher
 from src.jobs.hourly import HourlyJobScheduler
 from src.jobs.note_recovery import NoteRecoveryService, RecoveryResult
 from src.jobs.notes_sync import NotesSyncService, SyncResult
@@ -114,12 +115,14 @@ class ServiceManager:
         self._sleep_wake_detector: SleepWakeDetector | None = None
         self._note_recovery: NoteRecoveryService | None = None
         self._notes_sync: NotesSyncService | None = None
+        self._file_watcher: NoteFileWatcher | None = None
 
         # Service status tracking
         self._services: dict[str, ServiceStatus] = {
             "capture": ServiceStatus(name="capture", state=ServiceState.STOPPED),
             "hourly": ServiceStatus(name="hourly", state=ServiceState.STOPPED),
             "daily": ServiceStatus(name="daily", state=ServiceState.STOPPED),
+            "file_watcher": ServiceStatus(name="file_watcher", state=ServiceState.STOPPED),
         }
 
         # Health monitoring
@@ -154,6 +157,7 @@ class ServiceManager:
         results["capture"] = self._start_capture()
         results["hourly"] = self._start_hourly()
         results["daily"] = self._start_daily()
+        results["file_watcher"] = self._start_file_watcher()
 
         # Start health monitor
         self._start_health_monitor()
@@ -193,6 +197,9 @@ class ServiceManager:
 
         # Stop sleep/wake detector
         self._stop_sleep_wake_detector()
+
+        # Stop file watcher first (before other services)
+        self._stop_file_watcher()
 
         # Stop services in reverse order
         self._stop_daily()
@@ -262,6 +269,9 @@ class ServiceManager:
         elif service_name == "daily":
             self._stop_daily()
             return self._start_daily()
+        elif service_name == "file_watcher":
+            self._stop_file_watcher()
+            return self._start_file_watcher()
 
         return False
 
@@ -608,7 +618,52 @@ class ServiceManager:
             return self._hourly_scheduler is not None and self._hourly_scheduler.is_running()
         elif name == "daily":
             return self._daily_scheduler is not None and self._daily_scheduler.is_running()
+        elif name == "file_watcher":
+            return self._file_watcher is not None and self._file_watcher.is_running()
         return False
+
+    def _start_file_watcher(self) -> bool:
+        """Start the file watcher service."""
+        try:
+            with self._lock:
+                self._services["file_watcher"].state = ServiceState.STARTING
+
+            self._file_watcher = NoteFileWatcher(db_path=self.db_path)
+            success = self._file_watcher.start()
+
+            with self._lock:
+                if success:
+                    self._services["file_watcher"].state = ServiceState.RUNNING
+                    self._services["file_watcher"].start_time = datetime.now()
+                    self._services["file_watcher"].last_error = None
+                else:
+                    self._services["file_watcher"].state = ServiceState.FAILED
+                    self._services["file_watcher"].last_error = "Failed to start"
+
+            if success:
+                logger.info("File watcher started")
+            return success
+
+        except Exception as e:
+            logger.error(f"Failed to start file watcher: {e}")
+            with self._lock:
+                self._services["file_watcher"].state = ServiceState.FAILED
+                self._services["file_watcher"].last_error = str(e)
+            return False
+
+    def _stop_file_watcher(self) -> None:
+        """Stop the file watcher service."""
+        if self._file_watcher:
+            try:
+                self._file_watcher.stop()
+                logger.info("File watcher stopped")
+            except Exception as e:
+                logger.error(f"Error stopping file watcher: {e}")
+
+            self._file_watcher = None
+
+        with self._lock:
+            self._services["file_watcher"].state = ServiceState.STOPPED
 
     def _schedule_backfill_check(self) -> None:
         """Schedule a backfill check in a background thread."""

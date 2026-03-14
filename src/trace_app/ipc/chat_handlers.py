@@ -158,11 +158,87 @@ def handle_list_notes(params: dict[str, Any]) -> dict[str, Any]:
     start_date = params.get("start_date")
     end_date = params.get("end_date")
 
-    notes = []
+    # Try DB-based query first
+    notes = _list_notes_from_db(start_date, end_date, limit)
 
-    # Walk the notes directory structure
-    if not NOTES_DIR.exists():
-        return {"notes": []}
+    # Fallback to filesystem walk if DB returns nothing but files exist
+    if not notes and NOTES_DIR.exists() and any(NOTES_DIR.glob("**/*.md")):
+        notes = _list_notes_from_filesystem(start_date, end_date, limit)
+
+    return {"notes": notes}
+
+
+def _list_notes_from_db(
+    start_date: str | None,
+    end_date: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """List notes from the database."""
+    from datetime import datetime
+
+    from src.db.migrations import get_connection
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+
+        query = "SELECT note_id, note_type, start_ts, file_path FROM notes"
+        conditions = []
+        params_list: list = []
+
+        if start_date:
+            # Convert YYYYMMDD to ISO format
+            start_iso = f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}T00:00:00"
+            conditions.append("start_ts >= ?")
+            params_list.append(start_iso)
+
+        if end_date:
+            end_iso = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}T23:59:59"
+            conditions.append("start_ts <= ?")
+            params_list.append(end_iso)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY start_ts DESC LIMIT ?"
+        params_list.append(limit)
+
+        cursor.execute(query, params_list)
+
+        notes = []
+        for row in cursor.fetchall():
+            start_ts = row["start_ts"]
+            note_type_raw = row["note_type"]
+            note_type = "hourly" if note_type_raw == "hour" else "daily"
+
+            # Extract date string from start_ts
+            try:
+                dt = datetime.fromisoformat(start_ts)
+                date_str = dt.strftime("%Y%m%d")
+            except (ValueError, TypeError):
+                date_str = ""
+
+            notes.append(
+                {
+                    "note_id": row["note_id"],
+                    "type": note_type,
+                    "path": row["file_path"],
+                    "date": date_str,
+                }
+            )
+
+        return notes
+    finally:
+        conn.close()
+
+
+def _list_notes_from_filesystem(
+    start_date: str | None,
+    end_date: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Fallback: list notes by walking the filesystem."""
+    notes: list[dict[str, Any]] = []
 
     for year_dir in sorted(NOTES_DIR.iterdir(), reverse=True):
         if not year_dir.is_dir() or not year_dir.name.isdigit():
@@ -178,7 +254,6 @@ def handle_list_notes(params: dict[str, Any]) -> dict[str, Any]:
 
                 date_str = f"{year_dir.name}{month_dir.name}{day_dir.name}"
 
-                # Apply date filters
                 if start_date and date_str < start_date:
                     continue
                 if end_date and date_str > end_date:
@@ -187,10 +262,10 @@ def handle_list_notes(params: dict[str, Any]) -> dict[str, Any]:
                 for note_file in sorted(day_dir.glob("*.md"), reverse=True):
                     name = note_file.stem
                     if name.startswith("hour-"):
-                        note_id = name[5:]  # Remove "hour-" prefix
+                        note_id = name[5:]
                         note_type = "hourly"
                     elif name.startswith("day-"):
-                        note_id = name[4:]  # Remove "day-" prefix
+                        note_id = name[4:]
                         note_type = "daily"
                     else:
                         continue
@@ -205,9 +280,9 @@ def handle_list_notes(params: dict[str, Any]) -> dict[str, Any]:
                     )
 
                     if len(notes) >= limit:
-                        return {"notes": notes}
+                        return notes
 
-    return {"notes": notes}
+    return notes
 
 
 def reset_chat_api():

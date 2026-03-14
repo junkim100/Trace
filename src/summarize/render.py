@@ -302,6 +302,32 @@ class MarkdownRenderer:
 
         return lines
 
+    def render_and_hash(
+        self,
+        summary: HourlySummarySchema,
+        note_id: str,
+        hour_start: datetime,
+        hour_end: datetime,
+        location: str | None = None,
+        app_durations: dict[str, int] | None = None,
+        calendar_events: list | None = None,
+    ) -> tuple[str, str]:
+        """
+        Render a summary to Markdown and compute its content hash.
+
+        Returns both values to avoid rendering twice (once for writing, once for hashing).
+
+        Returns:
+            Tuple of (content, content_hash)
+        """
+        from src.core.hashing import compute_content_hash
+
+        content = self.render(
+            summary, note_id, hour_start, hour_end, location, app_durations, calendar_events
+        )
+        content_hash = compute_content_hash(content)
+        return content, content_hash
+
     def render_to_file(
         self,
         summary: HourlySummarySchema,

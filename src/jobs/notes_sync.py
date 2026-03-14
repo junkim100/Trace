@@ -321,6 +321,8 @@ class NotesSyncService:
         - Filesystem corruption
         - Files were moved without updating DB
         """
+        from src.core.hashing import compute_content_hash
+        from src.jobs.file_watcher import get_suppression_registry
         from src.revise.daily_note import DailyNoteGenerator
         from src.revise.schemas import DailyRevisionSchema
         from src.summarize.render import MarkdownRenderer
@@ -328,6 +330,7 @@ class NotesSyncService:
 
         hourly_renderer = MarkdownRenderer()
         daily_generator = DailyNoteGenerator(db_path=self.db_path)
+        registry = get_suppression_registry()
 
         conn = get_connection(self.db_path)
         try:
@@ -370,27 +373,29 @@ class NotesSyncService:
                         hour_start = datetime.fromisoformat(row["start_ts"])
                         hour_end = datetime.fromisoformat(row["end_ts"])
 
-                        saved = hourly_renderer.render_to_file(
+                        # Render, hash, and register suppression
+                        content, content_hash = hourly_renderer.render_and_hash(
                             summary=summary,
                             note_id=note_id,
                             hour_start=hour_start,
                             hour_end=hour_end,
-                            file_path=file_path,
                             location=summary.location,
                         )
+                        registry.register(str(file_path), content_hash)
 
-                        if saved:
-                            result.files_recovered += 1
-                            result.recovered_files.append(
-                                {
-                                    "note_id": note_id,
-                                    "note_type": note_type,
-                                    "file_path": str(file_path),
-                                }
-                            )
-                            logger.info(f"Recovered hourly note: {file_path}")
-                        else:
-                            raise Exception("Renderer returned False")
+                        file_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(file_path, "w", encoding="utf-8") as f:
+                            f.write(content)
+
+                        result.files_recovered += 1
+                        result.recovered_files.append(
+                            {
+                                "note_id": note_id,
+                                "note_type": note_type,
+                                "file_path": str(file_path),
+                            }
+                        )
+                        logger.info(f"Recovered hourly note: {file_path}")
 
                     elif note_type == "day":
                         revision = DailyRevisionSchema.model_validate(payload_data)
@@ -401,6 +406,10 @@ class NotesSyncService:
                             revision=revision,
                             note_id=note_id,
                         )
+
+                        # Register suppression before writing
+                        c_hash = compute_content_hash(content)
+                        registry.register(str(file_path), c_hash)
 
                         file_path.parent.mkdir(parents=True, exist_ok=True)
                         with open(file_path, "w", encoding="utf-8") as f:
