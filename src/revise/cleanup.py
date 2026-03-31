@@ -390,6 +390,49 @@ class ArtifactCleaner:
         return sizes
 
 
+def cleanup_stale_cache(max_age_days: int = 7) -> int:
+    """
+    Delete cache directories older than max_age_days regardless of revision status.
+
+    This is a safety net: if daily revision fails repeatedly, cache directories
+    accumulate indefinitely. This function ensures they're cleaned up eventually.
+
+    Args:
+        max_age_days: Maximum age in days before forced cleanup
+
+    Returns:
+        Number of directories removed
+    """
+    from datetime import timedelta
+
+    cutoff = datetime.now() - timedelta(days=max_age_days)
+    removed = 0
+
+    for cache_subdir in ["screenshots", "text_buffers", "ocr"]:
+        cache_path = CACHE_DIR / cache_subdir
+        if not cache_path.exists():
+            continue
+
+        for date_dir in sorted(cache_path.iterdir()):
+            if not date_dir.is_dir() or len(date_dir.name) != 8:
+                continue
+
+            try:
+                dir_date = datetime.strptime(date_dir.name, "%Y%m%d")
+                if dir_date < cutoff:
+                    shutil.rmtree(date_dir)
+                    removed += 1
+                    logger.info(f"Cleaned stale cache: {date_dir}")
+            except (ValueError, OSError) as e:
+                logger.debug(f"Skipping {date_dir}: {e}")
+
+    if removed > 0:
+        cleanup_empty_cache_directories()
+        logger.info(f"Cleaned {removed} stale cache directories (older than {max_age_days} days)")
+
+    return removed
+
+
 if __name__ == "__main__":
     import fire
 

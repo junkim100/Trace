@@ -182,6 +182,9 @@ class CaptureDaemon:
         self._last_capture_time: datetime | None = None
         self._sleep_wake_threshold_seconds = 60  # If gap > 60s, assume sleep/wake occurred
 
+        # Persistent DB connection for hot path (avoids ~260K open/close per day)
+        self._db_conn: sqlite3.Connection | None = None
+
         # Electron screenshot handoff
         self._electron_captures_screenshots = False
 
@@ -275,6 +278,11 @@ class CaptureDaemon:
         logger.info("Stopping capture daemon...")
         self._running = False
         self._shutdown_event.set()
+
+        # Close persistent DB connection
+        if self._db_conn:
+            self._db_conn.close()
+            self._db_conn = None
 
         # Close any pending event
         self._event_tracker.close_current_event()
@@ -623,6 +631,12 @@ class CaptureDaemon:
         except Exception as e:
             logger.error(f"Capture health check failed: {e}")
 
+    def _get_db_conn(self) -> sqlite3.Connection:
+        """Get or create the persistent DB connection for the capture thread."""
+        if self._db_conn is None:
+            self._db_conn = get_connection(self.db_path)
+        return self._db_conn
+
     def _store_screenshot(
         self,
         screenshot: CapturedScreenshot,
@@ -631,33 +645,26 @@ class CaptureDaemon:
     ) -> None:
         """Store a screenshot record in the database."""
         try:
-            conn = get_connection(self.db_path)
-            cursor = None
-            try:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    INSERT INTO screenshots (
-                        screenshot_id, ts, monitor_id, path, fingerprint,
-                        diff_score, width, height
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        screenshot.screenshot_id,
-                        screenshot.timestamp.isoformat(),
-                        screenshot.monitor_id,
-                        str(screenshot.path),
-                        fingerprint,
-                        diff_score,
-                        screenshot.width,
-                        screenshot.height,
-                    ),
-                )
-                conn.commit()
-            finally:
-                if cursor:
-                    cursor.close()
-                conn.close()
+            conn = self._get_db_conn()
+            conn.execute(
+                """
+                INSERT INTO screenshots (
+                    screenshot_id, ts, monitor_id, path, fingerprint,
+                    diff_score, width, height
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    screenshot.screenshot_id,
+                    screenshot.timestamp.isoformat(),
+                    screenshot.monitor_id,
+                    str(screenshot.path),
+                    fingerprint,
+                    diff_score,
+                    screenshot.width,
+                    screenshot.height,
+                ),
+            )
+            conn.commit()
         except sqlite3.Error as e:
             logger.error(f"Failed to store screenshot: {e}")
 

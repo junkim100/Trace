@@ -869,8 +869,43 @@ class ServiceManager:
                         ", ".join(changes),
                     )
 
+            # Check FTS index coverage and rebuild if drifted
+            self._check_fts_coverage()
+
+            # Clean stale cache directories (safety net for failed revisions)
+            self._cleanup_stale_cache()
+
         except Exception as e:
             logger.error(f"Notes sync failed: {e}")
+
+    def _check_fts_coverage(self) -> None:
+        """Rebuild FTS index if coverage drops below 90%."""
+        try:
+            from src.db.fts import get_fts_stats, rebuild_fts_index
+            from src.db.migrations import get_connection
+
+            conn = get_connection(self.db_path)
+            try:
+                stats = get_fts_stats(conn)
+                if stats["coverage"] < 0.9 and stats["total_notes"] > 0:
+                    logger.info(f"FTS coverage low ({stats['coverage']:.0%}), rebuilding index")
+                    count = rebuild_fts_index(conn)
+                    logger.info(f"FTS index rebuilt: {count} notes indexed")
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"FTS coverage check failed: {e}")
+
+    def _cleanup_stale_cache(self) -> None:
+        """Clean cache directories older than 7 days (safety net)."""
+        try:
+            from src.revise.cleanup import cleanup_stale_cache
+
+            removed = cleanup_stale_cache(max_age_days=7)
+            if removed > 0:
+                logger.info(f"Cleaned {removed} stale cache directories")
+        except Exception as e:
+            logger.error(f"Stale cache cleanup failed: {e}")
 
 
 if __name__ == "__main__":

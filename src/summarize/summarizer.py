@@ -846,6 +846,23 @@ Respond with ONLY a JSON object:
                 ),
             )
             conn.commit()
+
+            # Update FTS index for search
+            try:
+                from src.db.fts import index_note_fts
+
+                cursor.execute("SELECT rowid FROM notes WHERE note_id = ?", (note_id,))
+                row = cursor.fetchone()
+                if row:
+                    index_note_fts(
+                        conn,
+                        row[0],
+                        summary.summary,
+                        list(summary.categories) if summary.categories else None,
+                        [e.model_dump() for e in summary.entities] if summary.entities else None,
+                    )
+            except Exception as e:
+                logger.warning(f"FTS indexing failed for {note_id}: {e}")
         finally:
             conn.close()
 

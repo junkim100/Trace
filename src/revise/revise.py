@@ -273,6 +273,23 @@ class HourlyNoteReviser:
                 ),
             )
 
+            # Update FTS index for search
+            try:
+                from src.db.fts import index_note_fts
+
+                cursor.execute("SELECT rowid FROM notes WHERE note_id = ?", (note_id,))
+                fts_row = cursor.fetchone()
+                if fts_row:
+                    index_note_fts(
+                        conn,
+                        fts_row[0],
+                        updated_payload.get("summary", ""),
+                        updated_payload.get("categories"),
+                        updated_payload.get("entities"),
+                    )
+            except Exception as e:
+                logger.warning(f"FTS indexing failed for {note_id}: {e}")
+
             logger.info(f"Revised note {note_id} for hour {hour:02d}:00")
 
             return RevisionResult(

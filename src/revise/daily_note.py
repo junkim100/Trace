@@ -340,6 +340,24 @@ class DailyNoteGenerator:
 
             conn.commit()
 
+            # Update FTS index for search
+            try:
+                from src.db.fts import index_note_fts
+
+                actual_id = existing["note_id"] if existing else note_id
+                cursor.execute("SELECT rowid FROM notes WHERE note_id = ?", (actual_id,))
+                fts_row = cursor.fetchone()
+                if fts_row:
+                    index_note_fts(
+                        conn,
+                        fts_row[0],
+                        revision.day_summary,
+                        None,
+                        None,
+                    )
+            except Exception as e:
+                logger.warning(f"FTS indexing failed for daily note: {e}")
+
         except Exception as e:
             logger.error(f"Failed to store daily note in database: {e}")
             conn.rollback()
