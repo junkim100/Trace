@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, systemPreferences, shell, dialog, globalShortcut, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, systemPreferences, shell, dialog, globalShortcut, Notification, desktopCapturer, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const readline = require('readline');
 const AutoUpdater = require('./updater');
@@ -18,6 +19,14 @@ let requestId = 0;
 let tray = null;
 let pythonReadline = null; // Readline interface for Python stdout (must be closed to prevent memory leak)
 let autoUpdater = null; // Auto-update manager
+
+// Screenshot capture state (Electron captures, pushes to Python for dedup + DB)
+let screenshotIntervalId = null;
+let dailyRevisionHour = 3; // Updated from Python config at startup
+const SCREENSHOT_QUALITY = 85;
+const MAX_WIDTH = 1920;
+const MAX_HEIGHT = 1080;
+const MIN_JPEG_SIZE = 10000; // 10KB — all-black JPEGs are typically < 5KB
 
 // Get the data directory path (where notes, db, cache are stored)
 function getDataPath() {
@@ -91,6 +100,128 @@ function getPythonPath() {
     env: { TRACE_DATA_ROOT: dataPath },
   };
 }
+
+// --- Screenshot Capture (Electron-side) ---
+// Captures screenshots using desktopCapturer (inherits Trace.app TCC permission),
+// saves JPEGs to the cache directory, and pushes metadata to Python for dedup + DB storage.
+
+function getTraceDay(now) {
+  // A "Trace day" runs from dailyRevisionHour to dailyRevisionHour next day.
+  // If current hour < revision hour, the date belongs to "yesterday".
+  if (now.getHours() < dailyRevisionHour) {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday;
+  }
+  return now;
+}
+
+function getScreenshotDir(now) {
+  const traceDay = getTraceDay(now);
+  const dateStr = traceDay.getFullYear().toString().padStart(4, '0')
+    + (traceDay.getMonth() + 1).toString().padStart(2, '0')
+    + traceDay.getDate().toString().padStart(2, '0');
+  const hourStr = now.getHours().toString().padStart(2, '0');
+  return path.join(getDataPath(), 'cache', 'screenshots', dateStr, hourStr);
+}
+
+async function captureScreenshots() {
+  if (!pythonReady || !pythonProcess) return;
+
+  const now = new Date();
+  const outputDir = getScreenshotDir(now);
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: MAX_WIDTH, height: MAX_HEIGHT },
+    });
+
+    const displays = screen.getAllDisplays();
+    const screenshots = [];
+
+    for (const source of sources) {
+      const thumbnail = source.thumbnail;
+      if (!thumbnail || thumbnail.isEmpty()) continue;
+
+      // Determine monitor_id by matching source.display_id to displays array
+      let monitorId = 1;
+      const matchedIndex = displays.findIndex(d => String(d.id) === source.display_id);
+      if (matchedIndex >= 0) {
+        monitorId = matchedIndex + 1; // 1-based like Python's mss
+      }
+
+      const originalSize = thumbnail.getSize();
+
+      // Downscale if larger than max (desktopCapturer may return native resolution)
+      let finalImage = thumbnail;
+      let finalWidth = originalSize.width;
+      let finalHeight = originalSize.height;
+
+      if (originalSize.width > MAX_WIDTH || originalSize.height > MAX_HEIGHT) {
+        const scaleW = MAX_WIDTH / originalSize.width;
+        const scaleH = MAX_HEIGHT / originalSize.height;
+        const scale = Math.min(scaleW, scaleH);
+        finalWidth = Math.round(originalSize.width * scale);
+        finalHeight = Math.round(originalSize.height * scale);
+        finalImage = thumbnail.resize({ width: finalWidth, height: finalHeight, quality: 'best' });
+      }
+
+      // Encode to JPEG
+      const jpegBuffer = finalImage.toJPEG(SCREENSHOT_QUALITY);
+
+      // Skip blank/black images (permission denied or display off)
+      // All-black 1080p JPEGs at quality 85 are typically < 5KB
+      if (jpegBuffer.length < MIN_JPEG_SIZE) continue;
+
+      // Generate filename matching Python convention: HHMMSSMMM_m{monitor}_{uuid8}.jpg
+      const screenshotId = crypto.randomUUID();
+      const tsStr = now.getHours().toString().padStart(2, '0')
+        + now.getMinutes().toString().padStart(2, '0')
+        + now.getSeconds().toString().padStart(2, '0')
+        + now.getMilliseconds().toString().padStart(3, '0');
+      const filename = `${tsStr}_m${monitorId}_${screenshotId.substring(0, 8)}.jpg`;
+      const filePath = path.join(outputDir, filename);
+
+      fs.writeFileSync(filePath, jpegBuffer);
+
+      screenshots.push({
+        screenshot_id: screenshotId,
+        timestamp: now.toISOString(),
+        monitor_id: monitorId,
+        path: filePath,
+        width: finalWidth,
+        height: finalHeight,
+        original_width: originalSize.width,
+        original_height: originalSize.height,
+      });
+    }
+
+    // Push metadata to Python for dedup + DB storage
+    if (screenshots.length > 0 && pythonProcess && pythonProcess.stdin.writable) {
+      pythonProcess.stdin.write(JSON.stringify({ type: 'screenshots', data: screenshots }) + '\n');
+    }
+  } catch (err) {
+    console.error('Screenshot capture error:', err);
+  }
+}
+
+function startScreenshotCapture() {
+  if (screenshotIntervalId) return;
+  console.log('Starting Electron screenshot capture (1s interval)');
+  screenshotIntervalId = setInterval(captureScreenshots, 1000);
+}
+
+function stopScreenshotCapture() {
+  if (screenshotIntervalId) {
+    clearInterval(screenshotIntervalId);
+    screenshotIntervalId = null;
+    console.log('Stopped Electron screenshot capture');
+  }
+}
+
+// --- Python Backend ---
 
 function startPythonBackend() {
   const { command, args, cwd, env: customEnv } = getPythonPath();
@@ -180,6 +311,7 @@ function startPythonBackend() {
         pythonReady = true;
         console.log(`Python backend ready (version ${message.version})`);
         updateTrayMenu();
+        startScreenshotCapture();
         return;
       }
 
@@ -229,6 +361,7 @@ function startPythonBackend() {
     console.log(`Python backend exited (code: ${code}, signal: ${signal})`);
     pythonReady = false;
     pythonProcess = null;
+    stopScreenshotCapture();
 
     // Clean up readline interface to prevent memory leak
     if (pythonReadline) {
@@ -246,6 +379,7 @@ function startPythonBackend() {
 }
 
 function stopPythonBackend() {
+  stopScreenshotCapture();
   if (pythonProcess) {
     // Send shutdown command
     callPython('shutdown', {}).catch(() => {});
@@ -393,6 +527,10 @@ async function loadSettingsFromConfig() {
         appearanceSettings.launchAtLogin = result.appearance.launch_at_login !== false;
         applyDockVisibility();
         applyLaunchAtLogin();
+      }
+      // Load capture settings for Electron screenshot capture
+      if (result.capture && result.capture.daily_revision_hour !== undefined) {
+        dailyRevisionHour = result.capture.daily_revision_hour;
       }
       // Load shortcuts settings
       if (result.shortcuts) {

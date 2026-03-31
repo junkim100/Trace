@@ -182,6 +182,9 @@ class CaptureDaemon:
         self._last_capture_time: datetime | None = None
         self._sleep_wake_threshold_seconds = 60  # If gap > 60s, assume sleep/wake occurred
 
+        # Electron screenshot handoff
+        self._electron_captures_screenshots = False
+
         # Blank screenshot detection (permission health)
         self._permission_warned = False
         self._last_permission_warn_time: float = 0
@@ -465,49 +468,47 @@ class CaptureDaemon:
         if closed_event:
             self._stats.events_created += 1
 
-        # 7. Capture screenshots
-        monitors = self._screenshot_capture.get_monitors()
-        screenshots = self._screenshot_capture.capture_all(timestamp)
+        # 7. Capture screenshots (only if Electron is NOT providing them)
+        screenshots_to_store = []
         deduplicated_count = 0
 
-        # 7b. Track blank screenshots (permission health)
-        if monitors and not screenshots:
-            # Monitors exist but all captures returned None (blank/black)
-            self._stats.screenshots_blank += len(monitors)
-            self._stats.consecutive_blank_ticks += 1
-            if self._stats.consecutive_blank_ticks >= self._blank_threshold:
-                self._check_capture_health()
-        elif screenshots:
-            self._stats.consecutive_blank_ticks = 0
+        if not self._electron_captures_screenshots:
+            monitors = self._screenshot_capture.get_monitors()
+            screenshots = self._screenshot_capture.capture_all(timestamp)
 
-        # 8. Process screenshots (deduplication, store to DB)
-        screenshots_to_store = []
-        for screenshot in screenshots:
-            try:
-                result = self._dedup_tracker.check_and_update(
-                    screenshot.monitor_id, screenshot.path
-                )
+            # 7b. Track blank screenshots (permission health)
+            if monitors and not screenshots:
+                self._stats.screenshots_blank += len(monitors)
+                self._stats.consecutive_blank_ticks += 1
+                if self._stats.consecutive_blank_ticks >= self._blank_threshold:
+                    self._check_capture_health()
+            elif screenshots:
+                self._stats.consecutive_blank_ticks = 0
 
-                if result.is_duplicate:
-                    # Delete the duplicate file
-                    screenshot.path.unlink(missing_ok=True)
-                    deduplicated_count += 1
-                    self._stats.screenshots_deduplicated += 1
-                else:
-                    screenshots_to_store.append(
-                        (screenshot, result.current_hash, result.hamming_distance or 0)
+            # 8. Process screenshots (deduplication, store to DB)
+            for screenshot in screenshots:
+                try:
+                    result = self._dedup_tracker.check_and_update(
+                        screenshot.monitor_id, screenshot.path
                     )
-                    self._stats.screenshots_captured += 1
 
-                    # Link screenshot to current event
-                    self._event_tracker.add_evidence(screenshot.screenshot_id)
+                    if result.is_duplicate:
+                        screenshot.path.unlink(missing_ok=True)
+                        deduplicated_count += 1
+                        self._stats.screenshots_deduplicated += 1
+                    else:
+                        screenshots_to_store.append(
+                            (screenshot, result.current_hash, result.hamming_distance or 0)
+                        )
+                        self._stats.screenshots_captured += 1
+                        self._event_tracker.add_evidence(screenshot.screenshot_id)
 
-            except Exception as e:
-                logger.error(f"Screenshot processing error: {e}")
+                except Exception as e:
+                    logger.error(f"Screenshot processing error: {e}")
 
-        # 9. Store screenshots in database
-        for screenshot, fingerprint, diff in screenshots_to_store:
-            self._store_screenshot(screenshot, fingerprint, diff)
+            # 9. Store screenshots in database
+            for screenshot, fingerprint, diff in screenshots_to_store:
+                self._store_screenshot(screenshot, fingerprint, diff)
 
         return CaptureSnapshot(
             timestamp=timestamp,
@@ -522,6 +523,54 @@ class CaptureDaemon:
             blocked=False,
             blocked_reason=None,
         )
+
+    def process_electron_screenshots(self, screenshots_data: list[dict]) -> None:
+        """
+        Process screenshots captured by the Electron main process.
+
+        Electron captures via desktopCapturer (which has Screen Recording TCC permission),
+        saves JPEGs to disk, and pushes metadata here for dedup and DB storage.
+
+        Args:
+            screenshots_data: List of dicts with keys:
+                screenshot_id, timestamp, monitor_id, path,
+                width, height, original_width, original_height
+        """
+        if not self._electron_captures_screenshots:
+            self._electron_captures_screenshots = True
+            logger.info("Switched to Electron-managed screenshot capture")
+
+        for ss_data in screenshots_data:
+            try:
+                screenshot = CapturedScreenshot(
+                    screenshot_id=ss_data["screenshot_id"],
+                    timestamp=datetime.fromisoformat(ss_data["timestamp"]),
+                    monitor_id=ss_data["monitor_id"],
+                    path=Path(ss_data["path"]),
+                    width=ss_data["width"],
+                    height=ss_data["height"],
+                    original_width=ss_data["original_width"],
+                    original_height=ss_data["original_height"],
+                )
+
+                # Run dedup (computes perceptual hash on the saved JPEG)
+                result = self._dedup_tracker.check_and_update(
+                    screenshot.monitor_id, screenshot.path
+                )
+
+                if result.is_duplicate:
+                    screenshot.path.unlink(missing_ok=True)
+                    self._stats.screenshots_deduplicated += 1
+                else:
+                    self._store_screenshot(
+                        screenshot, result.current_hash, result.hamming_distance or 0
+                    )
+                    self._stats.screenshots_captured += 1
+                    self._event_tracker.add_evidence(screenshot.screenshot_id)
+
+            except Exception as e:
+                logger.error(f"Error processing Electron screenshot: {e}")
+                self._stats.errors += 1
 
     def _check_capture_health(self) -> None:
         """

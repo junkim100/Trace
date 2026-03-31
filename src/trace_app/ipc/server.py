@@ -202,6 +202,29 @@ def _compute_missing_embeddings(api_key: str) -> int:
     return computed
 
 
+def _handle_push_message(message: dict[str, Any]) -> None:
+    """Handle a push message from Electron (no response expected).
+
+    Push messages have a "type" field but no "id" field, distinguishing
+    them from RPC requests.
+    """
+    msg_type = message.get("type")
+
+    if msg_type == "screenshots":
+        _handle_screenshots_push(message.get("data", []))
+    else:
+        logger.warning(f"Unknown push message type: {msg_type}")
+
+
+def _handle_screenshots_push(screenshots: list[dict[str, Any]]) -> None:
+    """Handle screenshot data pushed from Electron's desktopCapturer."""
+    if not _service_manager or not _service_manager._capture_daemon:
+        logger.warning("Capture daemon not ready, dropping screenshots")
+        return
+
+    _service_manager._capture_daemon.process_electron_screenshots(screenshots)
+
+
 def run_server() -> None:
     """Run the IPC server, reading requests from stdin and writing responses to stdout.
 
@@ -299,6 +322,11 @@ def run_server() -> None:
                         error=f"Invalid JSON: {e}",
                     )
                     send_response(error_response)
+                    continue
+
+                # Check if this is a push message from Electron (has "type" but no "id")
+                if "type" in request_data and "id" not in request_data:
+                    _handle_push_message(request_data)
                     continue
 
                 response = process_request(request_data)
