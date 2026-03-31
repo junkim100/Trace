@@ -203,16 +203,18 @@ class NoteChangeHandler(FileSystemEventHandler):
     def on_moved(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        # Handle source (old path)
-        if self._is_note_file(event.src_path):
-            # If dest is also a note, treat as move; otherwise treat as delete
-            if hasattr(event, "dest_path") and self._is_note_file(event.dest_path):
-                self._debounced_sync(event.dest_path, "modify")
-                _sync_file_move(event.src_path, event.dest_path, self.db_path)
-            else:
-                self._debounced_sync(event.src_path, "delete")
-        # Handle dest (new path)
-        if hasattr(event, "dest_path") and self._is_note_file(event.dest_path):
+        src_is_note = self._is_note_file(event.src_path)
+        dest_is_note = hasattr(event, "dest_path") and self._is_note_file(event.dest_path)
+
+        if src_is_note and dest_is_note:
+            # Note renamed/moved — update path in DB, then sync content
+            _sync_file_move(event.src_path, event.dest_path, self.db_path)
+            self._debounced_sync(event.dest_path, "modify")
+        elif src_is_note:
+            # Note moved to non-note path — treat as deletion
+            self._debounced_sync(event.src_path, "delete")
+        elif dest_is_note:
+            # Non-note moved to note path — treat as creation
             self._debounced_sync(event.dest_path, "modify")
 
     def cancel_all_timers(self) -> None:
