@@ -550,6 +550,23 @@ class CaptureDaemon:
 
         for ss_data in screenshots_data:
             try:
+                # Validate required fields
+                required = [
+                    "screenshot_id",
+                    "timestamp",
+                    "monitor_id",
+                    "path",
+                    "width",
+                    "height",
+                    "original_width",
+                    "original_height",
+                ]
+                missing = [k for k in required if k not in ss_data]
+                if missing:
+                    logger.error(f"Electron screenshot missing fields: {missing}")
+                    self._stats.errors += 1
+                    continue
+
                 screenshot = CapturedScreenshot(
                     screenshot_id=ss_data["screenshot_id"],
                     timestamp=datetime.fromisoformat(ss_data["timestamp"]),

@@ -880,21 +880,22 @@ class ServiceManager:
 
     def _check_fts_coverage(self) -> None:
         """Rebuild FTS index if coverage drops below 90%."""
+        conn = None
         try:
             from src.db.fts import get_fts_stats, rebuild_fts_index
             from src.db.migrations import get_connection
 
             conn = get_connection(self.db_path)
-            try:
-                stats = get_fts_stats(conn)
-                if stats["coverage"] < 0.9 and stats["total_notes"] > 0:
-                    logger.info(f"FTS coverage low ({stats['coverage']:.0%}), rebuilding index")
-                    count = rebuild_fts_index(conn)
-                    logger.info(f"FTS index rebuilt: {count} notes indexed")
-            finally:
-                conn.close()
+            stats = get_fts_stats(conn)
+            if stats["coverage"] < 0.9 and stats["total_notes"] > 0:
+                logger.info(f"FTS coverage low ({stats['coverage']:.0%}), rebuilding index")
+                count = rebuild_fts_index(conn)
+                logger.info(f"FTS index rebuilt: {count} notes indexed")
         except Exception as e:
             logger.error(f"FTS coverage check failed: {e}")
+        finally:
+            if conn:
+                conn.close()
 
     def _cleanup_stale_cache(self) -> None:
         """Clean cache directories older than 7 days (safety net)."""

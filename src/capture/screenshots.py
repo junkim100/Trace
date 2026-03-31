@@ -129,22 +129,19 @@ def is_blank_image(image: Image.Image, threshold: int = 5) -> bool:
         return True
 
     # Sample a 3x3 grid: corners, edge midpoints, and center
-    positions = [
-        (0, 0),
-        (width // 2, 0),
-        (width - 1, 0),
-        (0, height // 2),
-        (width // 2, height // 2),
-        (width - 1, height // 2),
-        (0, height - 1),
-        (width // 2, height - 1),
-        (width - 1, height - 1),
-    ]
+    # Clamp positions to valid range for tiny images
+    xs = [0, min(width // 2, width - 1), width - 1]
+    ys = [0, min(height // 2, height - 1), height - 1]
+    positions = [(x, y) for y in ys for x in xs]
 
     for x, y in positions:
         pixel = image.getpixel((x, y))
-        # pixel is (R, G, B) or (R, G, B, A)
-        if max(pixel[:3]) > threshold:
+        # Handle different image modes: RGB tuple, RGBA tuple, or grayscale int
+        if isinstance(pixel, (int, float)):
+            brightness = int(pixel)
+        else:
+            brightness = max(pixel[:3])
+        if brightness > threshold:
             return False
 
     return True

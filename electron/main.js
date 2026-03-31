@@ -146,10 +146,12 @@ async function captureScreenshots() {
       if (!thumbnail || thumbnail.isEmpty()) continue;
 
       // Determine monitor_id by matching source.display_id to displays array
-      let monitorId = 1;
-      const matchedIndex = displays.findIndex(d => String(d.id) === source.display_id);
-      if (matchedIndex >= 0) {
-        monitorId = matchedIndex + 1; // 1-based like Python's mss
+      let monitorId = sources.indexOf(source) + 1; // Fallback: 1-based source order
+      if (source.display_id) {
+        const matchedIndex = displays.findIndex(d => String(d.id) === source.display_id);
+        if (matchedIndex >= 0) {
+          monitorId = matchedIndex + 1; // 1-based like Python's mss
+        }
       }
 
       const originalSize = thumbnail.getSize();

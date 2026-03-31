@@ -324,8 +324,13 @@ def run_server() -> None:
                     send_response(error_response)
                     continue
 
-                # Check if this is a push message from Electron (has "type" but no "id")
-                if "type" in request_data and "id" not in request_data:
+                # Push messages from Electron have "type" but no "id"/"method"
+                # RPC requests always have "id" and "method"
+                if (
+                    "type" in request_data
+                    and "id" not in request_data
+                    and "method" not in request_data
+                ):
                     _handle_push_message(request_data)
                     continue
 
