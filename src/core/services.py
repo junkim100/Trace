@@ -610,6 +610,22 @@ class ServiceManager:
                                 f"Max restart attempts ({self.MAX_RESTART_ATTEMPTS}) exceeded",
                             )
 
+        # Check capture quality (detect blank screenshots from permission denial)
+        self._check_capture_quality()
+
+    def _check_capture_quality(self) -> None:
+        """Check if capture daemon is producing valid screenshots."""
+        if not self._capture_daemon or not self._capture_daemon._running:
+            return
+
+        stats = self._capture_daemon.get_stats()
+        if stats.consecutive_blank_ticks >= 30:
+            logger.warning(
+                f"Capture quality issue: {stats.consecutive_blank_ticks} "
+                f"consecutive blank ticks, {stats.screenshots_blank} total blank"
+            )
+            self._capture_daemon._check_capture_health()
+
     def _check_service_running(self, name: str) -> bool:
         """Check if a specific service is actually running."""
         if name == "capture":

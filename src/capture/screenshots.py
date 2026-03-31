@@ -109,6 +109,47 @@ def _capture_display_mss(monitor_index: int) -> Image.Image | None:
         return None
 
 
+def is_blank_image(image: Image.Image, threshold: int = 5) -> bool:
+    """
+    Detect if an image is blank (all-black or near-black).
+
+    When macOS Screen Recording permission is denied, mss returns valid-looking
+    but all-black images instead of raising an error. This function detects that
+    by sampling a 3x3 grid of pixels.
+
+    Args:
+        image: PIL Image to check
+        threshold: Max RGB value to consider "black" (default 5)
+
+    Returns:
+        True if the image appears blank/black
+    """
+    width, height = image.size
+    if width == 0 or height == 0:
+        return True
+
+    # Sample a 3x3 grid: corners, edge midpoints, and center
+    positions = [
+        (0, 0),
+        (width // 2, 0),
+        (width - 1, 0),
+        (0, height // 2),
+        (width // 2, height // 2),
+        (width - 1, height // 2),
+        (0, height - 1),
+        (width // 2, height - 1),
+        (width - 1, height - 1),
+    ]
+
+    for x, y in positions:
+        pixel = image.getpixel((x, y))
+        # pixel is (R, G, B) or (R, G, B, A)
+        if max(pixel[:3]) > threshold:
+            return False
+
+    return True
+
+
 def _downscale_image(image: Image.Image) -> Image.Image:
     """
     Downscale an image to fit within MAX_WIDTH x MAX_HEIGHT while maintaining aspect ratio.
@@ -214,6 +255,14 @@ class MultiMonitorCapture:
             return None
 
         try:
+            # Detect blank/black images (Screen Recording permission denied)
+            if is_blank_image(image):
+                logger.warning(
+                    f"Blank image from monitor {monitor.monitor_id} "
+                    "(Screen Recording permission may be denied)"
+                )
+                return None
+
             original_width, original_height = image.size
 
             # Downscale if necessary

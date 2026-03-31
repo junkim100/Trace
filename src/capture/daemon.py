@@ -91,6 +91,8 @@ class CaptureStats:
     captures_total: int = 0
     screenshots_captured: int = 0
     screenshots_deduplicated: int = 0
+    screenshots_blank: int = 0
+    consecutive_blank_ticks: int = 0
     events_created: int = 0
     errors: int = 0
     start_time: datetime | None = None
@@ -179,6 +181,12 @@ class CaptureDaemon:
         # Sleep/wake detection (P13-09)
         self._last_capture_time: datetime | None = None
         self._sleep_wake_threshold_seconds = 60  # If gap > 60s, assume sleep/wake occurred
+
+        # Blank screenshot detection (permission health)
+        self._permission_warned = False
+        self._last_permission_warn_time: float = 0
+        self._permission_warn_cooldown = 300.0  # Re-warn after 5 minutes
+        self._blank_threshold = 10  # Consecutive blank ticks before checking permission
 
         # Shutdown handling
         self._shutdown_event = threading.Event()
@@ -458,8 +466,19 @@ class CaptureDaemon:
             self._stats.events_created += 1
 
         # 7. Capture screenshots
+        monitors = self._screenshot_capture.get_monitors()
         screenshots = self._screenshot_capture.capture_all(timestamp)
         deduplicated_count = 0
+
+        # 7b. Track blank screenshots (permission health)
+        if monitors and not screenshots:
+            # Monitors exist but all captures returned None (blank/black)
+            self._stats.screenshots_blank += len(monitors)
+            self._stats.consecutive_blank_ticks += 1
+            if self._stats.consecutive_blank_ticks >= self._blank_threshold:
+                self._check_capture_health()
+        elif screenshots:
+            self._stats.consecutive_blank_ticks = 0
 
         # 8. Process screenshots (deduplication, store to DB)
         screenshots_to_store = []
@@ -503,6 +522,57 @@ class CaptureDaemon:
             blocked=False,
             blocked_reason=None,
         )
+
+    def _check_capture_health(self) -> None:
+        """
+        Check if screenshot capture is actually working.
+
+        Called when consecutive blank screenshots exceed the threshold.
+        Uses CoreGraphics to authoritatively check Screen Recording permission,
+        then sends a user-visible notification if permission is denied.
+        """
+        now = time.time()
+
+        # Don't spam — respect cooldown
+        if (
+            self._permission_warned
+            and (now - self._last_permission_warn_time) < self._permission_warn_cooldown
+        ):
+            return
+
+        try:
+            from src.platform.permissions import PermissionStatus, _verify_screenshot_capability
+
+            result = _verify_screenshot_capability()
+
+            if result == PermissionStatus.DENIED:
+                logger.error(
+                    "Screen Recording permission is DENIED. "
+                    "Screenshots are blank. Grant permission in "
+                    "System Settings > Privacy & Security > Screen Recording, "
+                    "then restart Trace."
+                )
+                from src.platform.notifications import send_critical_notification
+
+                send_critical_notification(
+                    "Screen Recording Blocked",
+                    "Screenshots are blank. Open System Settings → Privacy & Security "
+                    "→ Screen Recording and enable Trace, then restart the app.",
+                )
+                self._permission_warned = True
+                self._last_permission_warn_time = now
+            else:
+                # Permission granted but images still blank — unusual (display off?)
+                logger.warning(
+                    f"Screen Recording permission appears granted but "
+                    f"{self._stats.consecutive_blank_ticks} consecutive blank captures. "
+                    f"Display may be off or in screensaver mode."
+                )
+                # Reset warn flag so we re-check next time
+                self._permission_warned = False
+
+        except Exception as e:
+            logger.error(f"Capture health check failed: {e}")
 
     def _store_screenshot(
         self,

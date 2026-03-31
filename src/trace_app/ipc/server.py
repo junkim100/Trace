@@ -84,6 +84,7 @@ def handle_get_status(params: dict[str, Any]) -> dict[str, Any]:
                 "captures_total": stats.captures_total,
                 "screenshots_captured": stats.screenshots_captured,
                 "screenshots_deduplicated": stats.screenshots_deduplicated,
+                "screenshots_blank": stats.screenshots_blank,
                 "events_created": stats.events_created,
                 "errors": stats.errors,
             }
