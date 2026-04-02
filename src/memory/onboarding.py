@@ -390,13 +390,21 @@ Rules:
             affirmative_signals = [
                 "yes",
                 "yeah",
+                "yea",
                 "yep",
+                "yup",
                 "sure",
                 "ready",
                 "let's go",
                 "continue",
                 "ok",
                 "okay",
+                "go",
+                "proceed",
+                "absolutely",
+                "of course",
+                "definitely",
+                "sounds good",
             ]
             if any(signal in user_lower for signal in affirmative_signals):
                 next_phase = ConversationPhase.COMPLETE.value

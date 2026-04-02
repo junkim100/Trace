@@ -422,7 +422,7 @@ export const UserProfile: React.FC = () => {
   };
 
   const phaseIndex = getPhaseIndex(phase);
-  const showContinueButton = isComplete || isReadyToContinue || phase === 'complete';
+  const showContinueButton = isComplete || isReadyToContinue || phase === 'confirming' || phase === 'complete';
 
   return (
     <OnboardingLayout
